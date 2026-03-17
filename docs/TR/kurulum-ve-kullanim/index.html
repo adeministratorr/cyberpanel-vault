@@ -124,6 +124,9 @@ chmod 600 /root/.config/cyberpanel-backup/encryption.pass</code></pre>
       <h3>7. İlk tam yedeği başlatın</h3>
       <p>İlk çalıştırmada tam yedek almanız gerekir. Bu işlem sunucudaki veri miktarına göre uzun sürebilir.</p>
       <pre><code>BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
+      <p>İsterseniz sadece belli alanları da yedekleyebilirsiniz. Örneğin yalnızca veritabanını ya da site dosyalarıyla sunucu ayarlarını almak mümkün:</p>
+      <pre><code>BACKUP_MODE=full BACKUP_COMPONENTS=databases /usr/local/bin/cyberpanel_full_backup.sh
+BACKUP_MODE=full BACKUP_COMPONENTS=site,server /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
       <p>İşlem sırasında hata alırsanız günlük dosyasına bakın:</p>
       <pre><code>tail -f /var/log/cyberpanel_backup.log</code></pre>
 
@@ -162,15 +165,17 @@ BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
         <li><code>STATE_DIR</code>, varsayılan <code>/var/lib/cyberpanel-backup</code></li>
         <li><code>LOG_FILE</code>, varsayılan <code>/var/log/cyberpanel_backup.log</code></li>
         <li><code>ENCRYPTION_PASSWORD_FILE</code>, varsayılan <code>/root/.config/cyberpanel-backup/encryption.pass</code></li>
+        <li><code>BACKUP_COMPONENTS</code>, varsayılan <code>all</code>; kullanılabilir değerler <code>databases,site,server,email</code></li>
       </ul>
+      <p>Farklı bileşen kombinasyonları ayrı zincirlerde tutulur. Yani sadece veritabanı için aldığınız artımlı yedek, site dosyalarının zincirini bozmaz.</p>
 
       <h2>Geri yükleme</h2>
       <p>Canlı sistemi değiştirmeden önce seçtiğiniz zinciri doğrulayın:</p>
-      <pre><code>/usr/local/bin/cyberpanel_restore.sh --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc</code></pre>
+      <pre><code>/usr/local/bin/cyberpanel_restore.sh --target-file backup__host-example.com__profile-all__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc</code></pre>
 
       <p>Gerçek geri yükleme için:</p>
       <pre><code>/usr/local/bin/cyberpanel_restore.sh \
-  --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc \
+  --target-file backup__host-example.com__profile-all__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc \
   --confirm-host "$(hostname -f)" \
   --apply</code></pre>
 
@@ -190,6 +195,7 @@ BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
       <p>Server Backup Manager kurulduğunda yedekleme ve geri yükleme işlemlerini terminal yerine panel benzeri bir ekrandan yönetebilirsiniz. Bu ekran şunları yapar:</p>
       <ul>
         <li>Tam, artımlı veya otomatik yedek başlatır.</li>
+        <li>Veritabanı, site dosyaları, sunucu ayarları ve e-posta verileri için ayrı kapsam seçtirir.</li>
         <li>Google Drive üzerindeki bu sunucuya ait yedek zincirlerini listeler.</li>
         <li>Seçilen zincir için geri yükleme işi başlatır.</li>
         <li>Son işleri ve günlük kayıtlarını ekranda gösterir.</li>
@@ -273,9 +279,14 @@ chmod 700 /var/lib/cyberpanel-backup-ui /var/lib/cyberpanel-backup-ui/jobs</code
         <li><code>Tam</code>: O anda yeni bir tam yedek alır.</li>
         <li><code>Artımlı</code>: Son tam yedeğin üstüne artımlı yedek alır.</li>
       </ul>
-      <p>Ardından <strong>Yedeklemeyi Başlat</strong> düğmesine basın. İş arka planda başlar.</p>
+      <p>Hemen altında hangi alanların yedekleneceğini seçebilirsiniz. Veritabanı, site dosyaları, sunucu ayarları ve e-posta verileri birbirinden bağımsız seçilebilir. Aynı kombinasyon kendi incremental zincirinde tutulur.</p>
+      <p>Ardından <strong>Yedeklemeyi Başlat</strong> düğmesine basın. İş arka planda başlar. Sayfa yeniden açıldığında kayıtlı süre sınırı ve seçili bileşenler ekranda görünür.</p>
 
-      <h3>2. Yedeklerin durumunu izleme</h3>
+      <h3>2. Otomatik zamanlama</h3>
+      <p><strong>Otomatik Zamanlama</strong> bölümünde saat, dakika, günler, yedek tipi ve kapsam ayrı ayrı kaydedilir. Buradan sadece veritabanını ya da sadece site dosyalarını planlamak mümkündür.</p>
+      <p>Bu bölüm tek bir zamanlama kaydı yönetir. Yani aynı anda birden fazla farklı takvim tanımlamak değil, seçtiğiniz kombinasyonu planlamak içindir.</p>
+
+      <h3>3. Yedeklerin durumunu izleme</h3>
       <p>Sayfanın alt kısmındaki <strong>Son İşler</strong> alanında başlatılan işleri görürsünüz. Burada işin:</p>
       <ul>
         <li>tipi</li>
@@ -284,7 +295,7 @@ chmod 700 /var/lib/cyberpanel-backup-ui /var/lib/cyberpanel-backup-ui/jobs</code
       </ul>
       <p>yer alır. <strong>Günlüğü Aç</strong> düğmesine basarsanız işlem çıktısını ekranda görürsünüz.</p>
 
-      <h3>3. Geri yükleme başlatma</h3>
+      <h3>4. Geri yükleme başlatma</h3>
       <p><strong>Uzak Yedek Zincirleri</strong> bölümünde Google Drive üzerindeki bu sunucuya ait yedekler listelenir. Buradan bir hedef seçin. Seçtiğiniz dosya otomatik olarak geri yükleme kutusuna gelir.</p>
       <p>Sonra şu adımları izleyin:</p>
       <ol>
@@ -295,7 +306,7 @@ chmod 700 /var/lib/cyberpanel-backup-ui /var/lib/cyberpanel-backup-ui/jobs</code
       </ol>
       <p>Bu işlem canlı sisteme yazdığı için dikkatli kullanılmalıdır.</p>
 
-      <h3>4. İlk kullanımda güvenli test önerisi</h3>
+      <h3>5. İlk kullanımda güvenli test önerisi</h3>
       <p>Arayüzü doğrudan üretim sunucusunda denemek yerine önce küçük bir test yapın:</p>
       <ul>
         <li>Önce panelden bir tam yedek başlatın.</li>

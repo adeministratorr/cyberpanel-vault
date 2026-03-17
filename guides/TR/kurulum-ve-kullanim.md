@@ -136,6 +136,13 @@ Google Drive içindeki klasörleri görüyorsanız bağlantı hazır demektir.
 BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh
 ```
 
+İsterseniz yalnızca belli alanları da yedekleyebilirsiniz:
+
+```bash
+BACKUP_MODE=full BACKUP_COMPONENTS=databases /usr/local/bin/cyberpanel_full_backup.sh
+BACKUP_MODE=full BACKUP_COMPONENTS=site,server /usr/local/bin/cyberpanel_full_backup.sh
+```
+
 İşlem sırasında hata alırsanız günlük dosyasına bakın:
 
 ```bash
@@ -192,20 +199,23 @@ Sık kullanılan ortam değişkenleri:
 - `STATE_DIR`, varsayılan `/var/lib/cyberpanel-backup`
 - `LOG_FILE`, varsayılan `/var/log/cyberpanel_backup.log`
 - `ENCRYPTION_PASSWORD_FILE`, varsayılan `/root/.config/cyberpanel-backup/encryption.pass`
+- `BACKUP_COMPONENTS`, varsayılan `all`; kullanılabilir değerler `databases,site,server,email`
+
+Farklı bileşen kombinasyonları ayrı zincirlerde tutulur. Sadece veritabanı için aldığınız artımlı yedek, site dosyalarının zincirini etkilemez.
 
 ## Geri yükleme
 
 Canlı sistemi değiştirmeden önce zinciri doğrulayın:
 
 ```bash
-/usr/local/bin/cyberpanel_restore.sh --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc
+/usr/local/bin/cyberpanel_restore.sh --target-file backup__host-example.com__profile-all__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc
 ```
 
 Gerçek geri yükleme için:
 
 ```bash
 /usr/local/bin/cyberpanel_restore.sh \
-  --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc \
+  --target-file backup__host-example.com__profile-all__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc \
   --confirm-host "$(hostname -f)" \
   --apply
 ```
@@ -227,6 +237,7 @@ Gerçek geri yükleme için:
 Server Backup Manager kurulduğunda yedekleme ve geri yükleme işlemlerini terminal yerine panel benzeri bir ekrandan yönetebilirsiniz. Bu ekran şunları yapar:
 
 - Tam, artımlı veya otomatik yedek başlatır.
+- Veritabanı, site dosyaları, sunucu ayarları ve e-posta verileri için ayrı kapsam seçtirir.
 - Google Drive üzerindeki bu sunucuya ait yedek zincirlerini listeler.
 - Seçilen zincir için geri yükleme işi başlatır.
 - Son işleri ve günlük kayıtlarını ekranda gösterir.
@@ -354,9 +365,17 @@ Sayfadaki **Yedekleme Başlat** alanında mod seçin:
 - `Tam`: O anda yeni bir tam yedek alır.
 - `Artımlı`: Son tam yedeğin üstüne artımlı yedek alır.
 
-Ardından **Yedeklemeyi Başlat** düğmesine basın. İş arka planda başlar.
+Hemen altında hangi alanların yedekleneceğini seçebilirsiniz. Veritabanı, site dosyaları, sunucu ayarları ve e-posta verileri birbirinden bağımsız seçilebilir. Aynı kombinasyon kendi incremental zincirinde tutulur.
 
-### 2. Yedeklerin durumunu izleme
+Ardından **Yedeklemeyi Başlat** düğmesine basın. İş arka planda başlar. Sayfa yeniden açıldığında kayıtlı süre sınırı ve seçili bileşenler ekranda görünür.
+
+### 2. Otomatik zamanlama
+
+**Otomatik Zamanlama** bölümünde saat, dakika, günler, yedek tipi ve kapsam ayrı ayrı kaydedilir. Buradan sadece veritabanını ya da sadece site dosyalarını planlamak mümkündür.
+
+Bu bölüm tek bir zamanlama kaydı yönetir. Aynı anda birden fazla farklı takvim tanımlamak yerine, seçtiğiniz kombinasyonu planlamanız için vardır.
+
+### 3. Yedeklerin durumunu izleme
 
 Sayfanın alt kısmındaki **Son İşler** alanında başlatılan işleri görürsünüz. Burada işin:
 
@@ -366,7 +385,7 @@ Sayfanın alt kısmındaki **Son İşler** alanında başlatılan işleri görü
 
 yer alır. **Günlüğü Aç** düğmesine basarsanız işlem çıktısını ekranda görürsünüz.
 
-### 3. Geri yükleme başlatma
+### 4. Geri yükleme başlatma
 
 **Uzak Yedek Zincirleri** bölümünde Google Drive üzerindeki bu sunucuya ait yedekler listelenir. Buradan bir hedef seçin. Seçtiğiniz dosya otomatik olarak geri yükleme kutusuna gelir.
 
@@ -379,7 +398,7 @@ Sonra şu adımları izleyin:
 
 Bu işlem canlı sisteme yazdığı için dikkatli kullanılmalıdır.
 
-### 4. İlk kullanımda güvenli test önerisi
+### 5. İlk kullanımda güvenli test önerisi
 
 Arayüzü doğrudan üretim sunucusunda denemek yerine önce küçük bir test yapın:
 

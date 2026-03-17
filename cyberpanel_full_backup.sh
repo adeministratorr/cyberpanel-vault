@@ -16,6 +16,7 @@ DRIVE_FOLDER="${DRIVE_FOLDER:-cyberpanel-backups}"
 MYSQL_PASSWORD_FILE="${MYSQL_PASSWORD_FILE:-/etc/cyberpanel/mysqlPassword}"
 MYSQL_DUMP_MODE="${MYSQL_DUMP_MODE:-auto}"
 BACKUP_MODE="${BACKUP_MODE:-auto}"
+BACKUP_COMPONENTS="${BACKUP_COMPONENTS:-all}"
 FULL_BACKUP_INTERVAL_DAYS="${FULL_BACKUP_INTERVAL_DAYS:-7}"
 BACKUP_DIR="${BACKUP_DIR:-/root/backups}"
 STATE_DIR="${STATE_DIR:-/var/lib/cyberpanel-backup}"
@@ -37,8 +38,9 @@ CURRENT_EPOCH="$(date +%s)"
 HOSTNAME_FQDN="$(hostname -f 2>/dev/null || hostname)"
 HOST_SLUG="$(printf '%s' "$HOSTNAME_FQDN" | tr -cs '[:alnum:]._-' '_')"
 STAGING_ROOT_NAME="__cyberpanel_backup"
-STATE_FILE="${STATE_DIR}/state.env"
-SNAPSHOT_FILE="${STATE_DIR}/current_chain.snar"
+STATE_PROFILE_DIR=""
+STATE_FILE=""
+SNAPSHOT_FILE=""
 
 BACKUP_TYPE=""
 CHAIN_ID=""
@@ -54,6 +56,8 @@ WORKING_SNAPSHOT_FILE=""
 MYSQL_DEFAULTS_FILE=""
 MYSQL_DUMP_MODE_EFFECTIVE=""
 BACKUP_REASON=""
+BACKUP_COMPONENTS_NORMALIZED=""
+PROFILE_KEY="all"
 
 STATE_CURRENT_CHAIN_ID=""
 STATE_LAST_FULL_EPOCH=""
@@ -66,6 +70,7 @@ CONSISTENCY_ACTIVE=0
 declare -a ROOT_ITEMS=()
 declare -a MYSQL_DUMP_ARGS=()
 declare -a STOPPED_SERVICES=()
+declare -a SELECTED_COMPONENTS=()
 
 if [ -t 1 ]; then
     RED='\033[0;31m'
@@ -135,8 +140,13 @@ require_root() {
 
 require_commands() {
     local cmd
+    local -a commands=(flock gzip mktemp openssl rclone sha256sum tar)
 
-    for cmd in flock gzip mktemp mysql mysqldump openssl rclone sha256sum tar; do
+    if component_enabled "databases"; then
+        commands+=(mysql mysqldump)
+    fi
+
+    for cmd in "${commands[@]}"; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             fatal "Gerekli komut bulunamadi: ${cmd}"
         fi
@@ -180,6 +190,74 @@ validate_settings() {
     esac
 }
 
+parse_backup_components() {
+    local raw_value
+    local token
+    local slug
+    local -a raw_tokens=()
+    local -a selected_slugs=()
+    declare -A seen_components=()
+
+    raw_value="$(printf '%s' "$BACKUP_COMPONENTS" | tr '[:upper:]' '[:lower:]')"
+    if [ -z "$raw_value" ] || [ "$raw_value" = "all" ]; then
+        raw_value="databases,site,server,email"
+    fi
+
+    IFS=', ' read -r -a raw_tokens <<< "$raw_value"
+    SELECTED_COMPONENTS=()
+
+    for token in "${raw_tokens[@]}"; do
+        [ -n "$token" ] || continue
+        case "$token" in
+            databases|site|server|email)
+                if [ -z "${seen_components[$token]+x}" ]; then
+                    SELECTED_COMPONENTS+=("$token")
+                    seen_components["$token"]=1
+                fi
+                ;;
+            *)
+                fatal "Gecersiz BACKUP_COMPONENTS degeri: ${token}"
+                ;;
+        esac
+    done
+
+    [ "${#SELECTED_COMPONENTS[@]}" -gt 0 ] || fatal "BACKUP_COMPONENTS icin en az bir bilesen secilmelidir."
+
+    BACKUP_COMPONENTS_NORMALIZED="$(IFS=,; printf '%s' "${SELECTED_COMPONENTS[*]}")"
+    if [ "$BACKUP_COMPONENTS_NORMALIZED" = "databases,site,server,email" ]; then
+        PROFILE_KEY="all"
+    else
+        selected_slugs=()
+        for token in "${SELECTED_COMPONENTS[@]}"; do
+            case "$token" in
+                databases) slug="db" ;;
+                site) slug="site" ;;
+                server) slug="server" ;;
+                email) slug="mail" ;;
+            esac
+            selected_slugs+=("$slug")
+        done
+        PROFILE_KEY="$(IFS=-; printf '%s' "${selected_slugs[*]}")"
+    fi
+
+    STATE_PROFILE_DIR="${STATE_DIR}/profiles/${PROFILE_KEY}"
+    STATE_FILE="${STATE_PROFILE_DIR}/state.env"
+    SNAPSHOT_FILE="${STATE_PROFILE_DIR}/current_chain.snar"
+}
+
+component_enabled() {
+    local requested="$1"
+    local component
+
+    for component in "${SELECTED_COMPONENTS[@]}"; do
+        if [ "$component" = "$requested" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 acquire_lock() {
     mkdir -p "$(dirname "$LOCK_FILE")"
     exec 9>"$LOCK_FILE" || fatal "Kilit dosyasi olusturulamadi: ${LOCK_FILE}"
@@ -190,13 +268,18 @@ acquire_lock() {
 }
 
 prepare_base_paths() {
-    mkdir -p "$BACKUP_DIR" "$STATE_DIR" "$(dirname "$LOG_FILE")"
-    chmod 700 "$STATE_DIR" 2>/dev/null || true
+    mkdir -p "$BACKUP_DIR" "$STATE_DIR" "$STATE_PROFILE_DIR" "$(dirname "$LOG_FILE")"
+    chmod 700 "$STATE_DIR" "$STATE_PROFILE_DIR" 2>/dev/null || true
     touch "$LOG_FILE" || fatal "Log dosyasi yazilamiyor: ${LOG_FILE}"
 }
 
 prepare_mysql_defaults() {
     local mysql_root_pass
+
+    if ! component_enabled "databases"; then
+        MYSQL_DEFAULTS_FILE=""
+        return 0
+    fi
 
     if [ ! -r "$MYSQL_PASSWORD_FILE" ]; then
         fatal "MySQL parola dosyasi okunamiyor: ${MYSQL_PASSWORD_FILE}"
@@ -279,7 +362,7 @@ determine_backup_mode() {
         CHAIN_STARTED_AT="${STATE_LAST_FULL_TIMESTAMP:-$STATE_CURRENT_CHAIN_ID}"
     fi
 
-    BACKUP_NAME="backup__host-${HOST_SLUG}__chain-${CHAIN_ID}__type-${BACKUP_TYPE}__at-${RUN_TIMESTAMP}"
+    BACKUP_NAME="backup__host-${HOST_SLUG}__profile-${PROFILE_KEY}__chain-${CHAIN_ID}__type-${BACKUP_TYPE}__at-${RUN_TIMESTAMP}"
 }
 
 initialize_backup_paths() {
@@ -306,6 +389,12 @@ prepare_working_snapshot() {
 
 determine_mysqldump_mode() {
     local myisam_count
+
+    if ! component_enabled "databases"; then
+        MYSQL_DUMP_MODE_EFFECTIVE="skipped"
+        MYSQL_DUMP_ARGS=()
+        return 0
+    fi
 
     MYSQL_DUMP_ARGS=(
         --all-databases
@@ -479,6 +568,8 @@ chain_id=${CHAIN_ID}
 chain_started_at=${CHAIN_STARTED_AT}
 run_started_at=${RUN_HUMAN_TIMESTAMP}
 host=${HOSTNAME_FQDN}
+profile_key=${PROFILE_KEY}
+backup_components=${BACKUP_COMPONENTS_NORMALIZED}
 remote=${RCLONE_REMOTE}:${DRIVE_FOLDER}
 retention_days=${RETENTION_DAYS}
 full_backup_interval_days=${FULL_BACKUP_INTERVAL_DAYS}
@@ -495,6 +586,11 @@ EOF
 
 backup_databases() {
     local sql_file="${STAGING_PATH}/databases/all_databases.sql"
+
+    if ! component_enabled "databases"; then
+        log "Veritabanlari atlandi."
+        return 0
+    fi
 
     log "Veritabanlari yedekleniyor..."
     if mysqldump \
@@ -690,7 +786,7 @@ cleanup_remote() {
 
     while IFS= read -r file; do
         case "$file" in
-            backup__host-${HOST_SLUG}__chain-*__type-*__at-*.tar.gz.enc|backup__host-${HOST_SLUG}__chain-*__type-*__at-*.tar.gz.enc.sha256)
+            backup__host-${HOST_SLUG}__profile-${PROFILE_KEY}__chain-*__type-*__at-*.tar.gz.enc|backup__host-${HOST_SLUG}__profile-${PROFILE_KEY}__chain-*__type-*__at-*.tar.gz.enc.sha256)
                 rest="${file#*__chain-}"
                 chain_id="${rest%%__type-*}"
                 if [ -n "$chain_id" ]; then
@@ -712,7 +808,7 @@ cleanup_remote() {
 
         if [ "$chain_epoch" -lt "$cutoff_epoch" ]; then
             if rclone delete "${RCLONE_REMOTE}:${DRIVE_FOLDER}" \
-                --include "backup__host-${HOST_SLUG}__chain-${chain_id}__*" \
+                --include "backup__host-${HOST_SLUG}__profile-${PROFILE_KEY}__chain-${chain_id}__*" \
                 2>>"$LOG_FILE"; then
                 log "Eski zincir silindi: ${chain_id}"
                 deleted_any=1
@@ -735,6 +831,7 @@ cleanup_local_archive() {
 
 main() {
     require_root
+    parse_backup_components
     acquire_lock
     require_commands
     validate_settings
@@ -750,22 +847,35 @@ main() {
     log "=========================================="
     log "Yedekleme basladi: ${BACKUP_NAME}"
     log "Mod: ${BACKUP_TYPE} | Zincir: ${CHAIN_ID}"
+    log "Bilesenler: ${BACKUP_COMPONENTS_NORMALIZED}"
     log "Neden: ${BACKUP_REASON}"
     log "=========================================="
 
     write_metadata
     freeze_writes
     backup_databases
-    register_backup_paths "Site dosyalari (/home)" required "home"
-    register_backup_paths "CyberPanel ayarlari" required "usr/local/CyberCP/CyberCP/settings.py" "etc/cyberpanel"
-    register_backup_paths "OpenLiteSpeed ayarlari" required "usr/local/lsws/conf"
-    register_backup_paths "Email verileri" optional "var/vmail"
-    register_backup_paths "DNS ayarlari" optional "etc/powerdns"
-    register_backup_paths "SSL sertifikalari" optional "etc/letsencrypt"
-    register_backup_paths "Mail servis ayarlari" optional "etc/postfix" "etc/dovecot"
-    register_backup_paths "Cron ayarlari" optional "etc/cron.d" "etc/cron.daily" "etc/cron.hourly" "etc/cron.weekly" "etc/cron.monthly" "var/spool/cron"
-    register_backup_paths "Systemd unit ayarlari" optional "etc/systemd/system"
-    register_backup_paths "Firewall ayarlari" optional "etc/firewalld" "etc/ufw"
+    if component_enabled "site"; then
+        register_backup_paths "Site dosyalari (/home)" required "home"
+    else
+        log "Site dosyalari atlandi."
+    fi
+    if component_enabled "server"; then
+        register_backup_paths "CyberPanel ayarlari" required "usr/local/CyberCP/CyberCP/settings.py" "etc/cyberpanel"
+        register_backup_paths "OpenLiteSpeed ayarlari" required "usr/local/lsws/conf"
+        register_backup_paths "DNS ayarlari" optional "etc/powerdns"
+        register_backup_paths "SSL sertifikalari" optional "etc/letsencrypt"
+        register_backup_paths "Mail servis ayarlari" optional "etc/postfix" "etc/dovecot"
+        register_backup_paths "Cron ayarlari" optional "etc/cron.d" "etc/cron.daily" "etc/cron.hourly" "etc/cron.weekly" "etc/cron.monthly" "var/spool/cron"
+        register_backup_paths "Systemd unit ayarlari" optional "etc/systemd/system"
+        register_backup_paths "Firewall ayarlari" optional "etc/firewalld" "etc/ufw"
+    else
+        log "Sunucu ayarlari atlandi."
+    fi
+    if component_enabled "email"; then
+        register_backup_paths "Email verileri" optional "var/vmail"
+    else
+        log "Email verileri atlandi."
+    fi
 
     abort_if_critical_failures
     package_backup
@@ -780,6 +890,7 @@ main() {
     log "=========================================="
     log "Yedekleme basariyla tamamlandi."
     log "Mod: ${BACKUP_TYPE} | Zincir: ${CHAIN_ID}"
+    log "Bilesenler: ${BACKUP_COMPONENTS_NORMALIZED}"
     log "Uyarilar: ${WARNINGS}"
     log "Sure: $((SECONDS / 60)) dakika $((SECONDS % 60)) saniye"
     log "=========================================="

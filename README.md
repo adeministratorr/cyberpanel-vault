@@ -106,6 +106,13 @@ chmod 600 /root/.config/cyberpanel-backup/encryption.pass
 BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh
 ```
 
+Only the database, site files or server settings can also be backed up selectively:
+
+```bash
+BACKUP_MODE=full BACKUP_COMPONENTS=databases /usr/local/bin/cyberpanel_full_backup.sh
+BACKUP_MODE=full BACKUP_COMPONENTS=site,server /usr/local/bin/cyberpanel_full_backup.sh
+```
+
 7. Schedule regular runs with `BACKUP_MODE=auto`. In `auto` mode the script takes a weekly full backup and incremental backups between full runs.
 
 Example cron:
@@ -119,6 +126,7 @@ Example cron:
 - Automatic mode: `BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh`
 - Force a full backup: `BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh`
 - Force an incremental backup: `BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh`
+- Only back up selected areas: `BACKUP_COMPONENTS=databases`, `BACKUP_COMPONENTS=site`, `BACKUP_COMPONENTS=server`, `BACKUP_COMPONENTS=email`
 
 Important runtime variables:
 
@@ -128,20 +136,23 @@ Important runtime variables:
 - `STATE_DIR`: default `/var/lib/cyberpanel-backup`
 - `LOG_FILE`: default `/var/log/cyberpanel_backup.log`
 - `ENCRYPTION_PASSWORD_FILE`: default `/root/.config/cyberpanel-backup/encryption.pass`
+- `BACKUP_COMPONENTS`: default `all`, available values `databases,site,server,email`
+
+Different component combinations are kept in separate backup chains. For example, a database-only backup and a site-only backup do not share the same incremental state.
 
 ## Restore usage
 
 First validate the selected backup chain without changing the server:
 
 ```bash
-/usr/local/bin/cyberpanel_restore.sh --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc
+/usr/local/bin/cyberpanel_restore.sh --target-file backup__host-example.com__profile-all__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc
 ```
 
 Apply a real restore:
 
 ```bash
 /usr/local/bin/cyberpanel_restore.sh \
-  --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc \
+  --target-file backup__host-example.com__profile-all__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc \
   --confirm-host "$(hostname -f)" \
   --apply
 ```
@@ -178,6 +189,8 @@ bash test_cyberpanel_integration.sh --panel-url https://panel.example.com/server
 ```
 
 The installer copies the Django app into the CyberPanel codebase, installs the shell scripts, writes a restricted root runner, patches `settings.py` and `urls.py`, and creates a `sudoers` rule so the panel can launch root-only backup jobs safely.
+
+The UI shows the saved timeout, schedule and component selections when the page loads. Manual and scheduled backups can be limited to `databases`, `site`, `server` and `email`, and each component combination keeps its own incremental chain.
 
 Manual integration points:
 

@@ -30,7 +30,11 @@ DRIVE_FOLDER = os.environ.get("DRIVE_FOLDER", "cyberpanel-backups")
 HOST_FQDN = socket.getfqdn() or socket.gethostname()
 HOST_SLUG = re.sub(r"[^A-Za-z0-9._-]+", "_", HOST_FQDN)
 BACKUP_RE = re.compile(
-    r"^backup__host-(?P<host>[A-Za-z0-9._-]+)__chain-(?P<chain>\d{8}T\d{6})__type-(?P<kind>full|incremental)__at-(?P<timestamp>\d{8}T\d{6})\.tar\.gz\.enc$"
+    r"^backup__host-(?P<host>[A-Za-z0-9._-]+)"
+    r"(?:__profile-(?P<profile>[A-Za-z0-9._-]+))?"
+    r"__chain-(?P<chain>\d{8}T\d{6})"
+    r"__type-(?P<kind>full|incremental)"
+    r"__at-(?P<timestamp>\d{8}T\d{6})\.tar\.gz\.enc$"
 )
 JOB_ID_RE = re.compile(r"^\d{8}T\d{6}-[0-9a-f]{8}$")
 ALLOWED_BACKUP_MODES = {"auto", "full", "incremental"}
@@ -44,6 +48,21 @@ DEFAULT_SCHEDULE_ENABLED = False
 DEFAULT_SCHEDULE_HOUR = 3
 DEFAULT_SCHEDULE_MINUTE = 0
 DEFAULT_SCHEDULE_MODE = "auto"
+BACKUP_COMPONENT_ORDER = ["databases", "site", "server", "email"]
+BACKUP_COMPONENT_LABELS = {
+    "databases": "Veritabanı",
+    "site": "Site dosyaları",
+    "server": "Sunucu ayarları",
+    "email": "E-posta verileri",
+}
+BACKUP_COMPONENT_SLUGS = {
+    "databases": "db",
+    "site": "site",
+    "server": "server",
+    "email": "mail",
+}
+PROFILE_SLUG_TO_COMPONENT = {slug: component for component, slug in BACKUP_COMPONENT_SLUGS.items()}
+DEFAULT_BACKUP_COMPONENTS = list(BACKUP_COMPONENT_ORDER)
 UI_DIR_MODE = 0o2770
 UI_FILE_MODE = 0o660
 WEEKDAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -154,6 +173,93 @@ def _sanitize_schedule_mode(value: Any, default: str) -> str:
     if mode not in ALLOWED_BACKUP_MODES:
         return default
     return mode
+
+
+def _coerce_backup_components(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return [item.strip().lower() for item in value.split(",") if item.strip()]
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip().lower() for item in value if str(item).strip()]
+    return None
+
+
+def _sanitize_backup_components(value: Any, default: list[str]) -> list[str]:
+    candidates = _coerce_backup_components(value)
+    if candidates is None:
+        candidates = list(default)
+
+    if candidates == ["all"]:
+        return list(DEFAULT_BACKUP_COMPONENTS)
+
+    seen: set[str] = set()
+    components: list[str] = []
+    for component in BACKUP_COMPONENT_ORDER:
+        if component in candidates and component not in seen:
+            components.append(component)
+            seen.add(component)
+
+    return components or list(default)
+
+
+def validate_backup_components(
+    value: Any,
+    *,
+    default: list[str] | None = None,
+    field_label: str = "Yedek bileşenleri",
+) -> list[str]:
+    candidates = _coerce_backup_components(value)
+    if candidates is None:
+        return list(default or DEFAULT_BACKUP_COMPONENTS)
+
+    if candidates == ["all"]:
+        return list(DEFAULT_BACKUP_COMPONENTS)
+
+    if not candidates:
+        raise ServiceError(f"{field_label} için en az bir seçim yapılmalıdır.")
+
+    invalid_components = [item for item in candidates if item not in BACKUP_COMPONENT_ORDER]
+    if invalid_components:
+        raise ServiceError(f"{field_label} içinde geçersiz seçim var: {', '.join(invalid_components)}")
+
+    sanitized = _sanitize_backup_components(candidates, default or DEFAULT_BACKUP_COMPONENTS)
+    return sanitized
+
+
+def summarize_backup_components(components: list[str] | Any, compact: bool = False) -> str:
+    normalized = _sanitize_backup_components(components, DEFAULT_BACKUP_COMPONENTS)
+    if normalized == DEFAULT_BACKUP_COMPONENTS:
+        return "Tüm bileşenler"
+
+    labels = [BACKUP_COMPONENT_LABELS[item] for item in normalized]
+    if compact:
+        return ", ".join(labels)
+    return " + ".join(labels)
+
+
+def backup_profile_key(components: list[str] | Any) -> str:
+    normalized = _sanitize_backup_components(components, DEFAULT_BACKUP_COMPONENTS)
+    if normalized == DEFAULT_BACKUP_COMPONENTS:
+        return "all"
+    return "-".join(BACKUP_COMPONENT_SLUGS[item] for item in normalized)
+
+
+def components_from_profile_key(profile_key: str) -> list[str]:
+    normalized = (profile_key or "").strip().lower()
+    if not normalized or normalized in {"all", "legacy-all"}:
+        return list(DEFAULT_BACKUP_COMPONENTS)
+
+    slugs = [item for item in normalized.split("-") if item]
+    components: list[str] = []
+    seen: set[str] = set()
+    for slug in slugs:
+        component = PROFILE_SLUG_TO_COMPONENT.get(slug)
+        if component and component not in seen:
+            components.append(component)
+            seen.add(component)
+
+    return components or list(DEFAULT_BACKUP_COMPONENTS)
 
 
 def _now_iso() -> str:
@@ -290,6 +396,10 @@ def _settings_defaults() -> dict[str, Any]:
             os.environ.get("CYBERPANEL_SERVER_BACKUP_TIMEOUT_MINUTES"),
             DEFAULT_BACKUP_TIMEOUT_MINUTES,
         ),
+        "backup_default_components": _sanitize_backup_components(
+            os.environ.get("CYBERPANEL_SERVER_BACKUP_COMPONENTS"),
+            DEFAULT_BACKUP_COMPONENTS,
+        ),
         "backup_schedule_enabled": _parse_bool(
             os.environ.get("CYBERPANEL_SERVER_BACKUP_SCHEDULE_ENABLED"),
             DEFAULT_SCHEDULE_ENABLED,
@@ -305,6 +415,10 @@ def _settings_defaults() -> dict[str, Any]:
         "backup_schedule_mode": _sanitize_schedule_mode(
             os.environ.get("CYBERPANEL_SERVER_BACKUP_SCHEDULE_MODE"),
             DEFAULT_SCHEDULE_MODE,
+        ),
+        "backup_schedule_components": _sanitize_backup_components(
+            os.environ.get("CYBERPANEL_SERVER_BACKUP_SCHEDULE_COMPONENTS"),
+            DEFAULT_BACKUP_COMPONENTS,
         ),
         "backup_schedule_weekdays": _sanitize_schedule_weekdays(
             os.environ.get("CYBERPANEL_SERVER_BACKUP_SCHEDULE_WEEKDAYS"),
@@ -330,6 +444,10 @@ def load_ui_settings() -> dict[str, Any]:
             payload.get("backup_timeout_minutes"),
             settings["backup_timeout_minutes"],
         )
+        settings["backup_default_components"] = _sanitize_backup_components(
+            payload.get("backup_default_components"),
+            settings["backup_default_components"],
+        )
         settings["backup_schedule_enabled"] = _parse_bool(
             payload.get("backup_schedule_enabled"),
             settings["backup_schedule_enabled"],
@@ -346,6 +464,10 @@ def load_ui_settings() -> dict[str, Any]:
             payload.get("backup_schedule_mode"),
             settings["backup_schedule_mode"],
         )
+        settings["backup_schedule_components"] = _sanitize_backup_components(
+            payload.get("backup_schedule_components"),
+            settings["backup_schedule_components"],
+        )
         settings["backup_schedule_weekdays"] = _sanitize_schedule_weekdays(
             payload.get("backup_schedule_weekdays"),
             settings["backup_schedule_weekdays"],
@@ -359,11 +481,18 @@ def save_ui_settings(settings: dict[str, Any]) -> dict[str, Any]:
         current = load_ui_settings()
         if "backup_timeout_minutes" in settings:
             current["backup_timeout_minutes"] = validate_backup_timeout_minutes(settings.get("backup_timeout_minutes"))
+        if "backup_default_components" in settings:
+            current["backup_default_components"] = validate_backup_components(
+                settings.get("backup_default_components"),
+                default=current["backup_default_components"],
+                field_label="Varsayılan yedek bileşenleri",
+            )
         if {
             "backup_schedule_enabled",
             "backup_schedule_hour",
             "backup_schedule_minute",
             "backup_schedule_mode",
+            "backup_schedule_components",
             "backup_schedule_weekdays",
         } & set(settings.keys()):
             current.update(
@@ -372,6 +501,7 @@ def save_ui_settings(settings: dict[str, Any]) -> dict[str, Any]:
                     settings.get("backup_schedule_hour", current["backup_schedule_hour"]),
                     settings.get("backup_schedule_minute", current["backup_schedule_minute"]),
                     settings.get("backup_schedule_mode", current["backup_schedule_mode"]),
+                    settings.get("backup_schedule_components", current["backup_schedule_components"]),
                     settings.get("backup_schedule_weekdays", current["backup_schedule_weekdays"]),
                 )
             )
@@ -402,6 +532,7 @@ def validate_backup_schedule_settings(
     hour: Any,
     minute: Any,
     mode: Any,
+    components: Any,
     weekdays: Any,
 ) -> dict[str, Any]:
     explicit_weekdays: list[str] | None
@@ -416,6 +547,11 @@ def validate_backup_schedule_settings(
     schedule_hour = _sanitize_schedule_hour(hour, DEFAULT_SCHEDULE_HOUR)
     schedule_minute = _sanitize_schedule_minute(minute, DEFAULT_SCHEDULE_MINUTE)
     schedule_mode = _sanitize_schedule_mode(mode, DEFAULT_SCHEDULE_MODE)
+    schedule_components = validate_backup_components(
+        components,
+        default=DEFAULT_BACKUP_COMPONENTS,
+        field_label="Zamanlama bileşenleri",
+    )
     schedule_weekdays = _sanitize_schedule_weekdays(weekdays, WEEKDAY_ORDER)
 
     raw_hour = str(hour).strip() if hour is not None else ""
@@ -438,6 +574,7 @@ def validate_backup_schedule_settings(
         "backup_schedule_hour": schedule_hour,
         "backup_schedule_minute": schedule_minute,
         "backup_schedule_mode": schedule_mode,
+        "backup_schedule_components": schedule_components,
         "backup_schedule_weekdays": schedule_weekdays,
     }
 
@@ -458,7 +595,11 @@ def summarize_backup_schedule(settings: dict[str, Any]) -> str:
         "incremental": "Artımlı",
     }
     mode_label = mode_labels.get(settings.get("backup_schedule_mode", DEFAULT_SCHEDULE_MODE), "Otomatik")
-    return f"{day_label} {settings['backup_schedule_hour']:02d}:{settings['backup_schedule_minute']:02d} | {mode_label}"
+    components_label = summarize_backup_components(settings.get("backup_schedule_components", DEFAULT_BACKUP_COMPONENTS), compact=True)
+    return (
+        f"{day_label} {settings['backup_schedule_hour']:02d}:{settings['backup_schedule_minute']:02d} | "
+        f"{mode_label} | {components_label}"
+    )
 
 
 def _has_active_jobs() -> bool:
@@ -635,31 +776,53 @@ def _validate_script(path: Path, label: str) -> None:
         raise ServiceError(f"{label} betiği çalıştırılabilir değil: {path}")
 
 
-def start_backup_job(mode: str, timeout_minutes: Any = None) -> dict[str, Any]:
+def start_backup_job(
+    mode: str,
+    timeout_minutes: Any = None,
+    components: Any = None,
+    *,
+    persist_manual_defaults: bool = True,
+) -> dict[str, Any]:
     if mode not in ALLOWED_BACKUP_MODES:
         raise ServiceError(f"Geçersiz yedekleme modu: {mode}")
 
     validated_timeout_minutes = validate_backup_timeout_minutes(timeout_minutes)
+    validated_components = validate_backup_components(
+        components,
+        default=load_ui_settings()["backup_default_components"],
+    )
     _validate_script(BACKUP_SCRIPT, "Backup")
     _ensure_no_active_jobs()
-    save_ui_settings({"backup_timeout_minutes": validated_timeout_minutes})
+
+    if persist_manual_defaults:
+        save_ui_settings(
+            {
+                "backup_timeout_minutes": validated_timeout_minutes,
+                "backup_default_components": validated_components,
+            }
+        )
+
     return create_job(
         job_type="backup",
         command=[str(BACKUP_SCRIPT)],
         env={
             "BACKUP_MODE": mode,
             "BACKUP_TIMEOUT_MINUTES": str(validated_timeout_minutes),
+            "BACKUP_COMPONENTS": ",".join(validated_components),
         },
         meta={
             "mode": mode,
             "timeout_minutes": validated_timeout_minutes,
+            "components": validated_components,
+            "components_label": summarize_backup_components(validated_components, compact=True),
+            "profile_key": backup_profile_key(validated_components),
         },
     )
 
 
-def update_backup_schedule(enabled: Any, hour: Any, minute: Any, mode: Any, weekdays: Any) -> dict[str, Any]:
+def update_backup_schedule(enabled: Any, hour: Any, minute: Any, mode: Any, components: Any, weekdays: Any) -> dict[str, Any]:
     current_settings = load_ui_settings()
-    validated_schedule = validate_backup_schedule_settings(enabled, hour, minute, mode, weekdays)
+    validated_schedule = validate_backup_schedule_settings(enabled, hour, minute, mode, components, weekdays)
     candidate_settings = {
         **current_settings,
         **validated_schedule,
@@ -774,10 +937,16 @@ def list_remote_backups() -> list[dict[str, Any]]:
             continue
 
         chain_id = match.group("chain")
+        profile_key = match.group("profile") or "legacy-all"
+        grouping_key = f"{profile_key}:{chain_id}"
+        chain_components = components_from_profile_key(profile_key)
         chain_entry = chains.setdefault(
-            chain_id,
+            grouping_key,
             {
                 "chain_id": chain_id,
+                "profile_key": profile_key,
+                "components": chain_components,
+                "components_label": summarize_backup_components(chain_components, compact=True),
                 "host": match.group("host"),
                 "backups": [],
             },
@@ -807,6 +976,9 @@ def latest_backup_summary(backups: list[dict[str, Any]]) -> dict[str, Any] | Non
     latest_item = latest_chain["backups"][-1]
     return {
         "chain_id": latest_chain["chain_id"],
+        "profile_key": latest_chain["profile_key"],
+        "components": latest_chain["components"],
+        "components_label": latest_chain["components_label"],
         "backup_count": latest_chain["backup_count"],
         "latest_file": latest_item["file"],
         "latest_timestamp": latest_item["timestamp"],
@@ -824,6 +996,7 @@ def active_job_summary(jobs: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "status": job.get("status", ""),
                 "progress_percent": job.get("progress_percent", 0),
                 "progress_label": job.get("progress_label", ""),
+                "components_label": str((job.get("meta") or {}).get("components_label", "")),
             }
     return None
 

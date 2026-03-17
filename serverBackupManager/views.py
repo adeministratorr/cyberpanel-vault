@@ -42,12 +42,21 @@ def index(request: HttpRequest) -> HttpResponse:
 def run_backup(request: HttpRequest) -> HttpResponse:
     mode = request.POST.get("mode", "auto").strip() or "auto"
     timeout_minutes = request.POST.get("timeout_minutes", "").strip()
+    components = request.POST.getlist("backup_components")
 
     try:
         timeout_value = services.validate_backup_timeout_minutes(timeout_minutes)
-        services.start_backup_job(mode, timeout_value)
+        validated_components = services.validate_backup_components(
+            components,
+            default=services.load_ui_settings()["backup_default_components"],
+        )
+        services.start_backup_job(mode, timeout_value, validated_components)
         timeout_label = "limitsiz" if timeout_value == 0 else f"{timeout_value} dakika"
-        messages.success(request, f"Yedekleme işi başlatıldı. Mod: {mode} | Süre sınırı: {timeout_label}")
+        components_label = services.summarize_backup_components(validated_components, compact=True)
+        messages.success(
+            request,
+            f"Yedekleme işi başlatıldı. Mod: {mode} | Kapsam: {components_label} | Süre sınırı: {timeout_label}",
+        )
     except services.ServiceError as exc:
         messages.error(request, str(exc))
 
@@ -61,6 +70,7 @@ def save_schedule(request: HttpRequest) -> HttpResponse:
     schedule_hour = request.POST.get("schedule_hour", "").strip()
     schedule_minute = request.POST.get("schedule_minute", "").strip()
     schedule_mode = request.POST.get("schedule_mode", "auto").strip()
+    schedule_components = request.POST.getlist("schedule_components")
     schedule_weekdays = request.POST.getlist("schedule_weekdays")
 
     try:
@@ -69,6 +79,7 @@ def save_schedule(request: HttpRequest) -> HttpResponse:
             hour=schedule_hour,
             minute=schedule_minute,
             mode=schedule_mode,
+            components=schedule_components,
             weekdays=schedule_weekdays,
         )
         messages.success(

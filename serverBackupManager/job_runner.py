@@ -19,10 +19,11 @@ HOST_FQDN = socket.getfqdn() or socket.gethostname()
 UI_DIR_MODE = 0o2770
 UI_FILE_MODE = 0o660
 BACKUP_RE = re.compile(
-    r"^backup__host-([A-Za-z0-9._-]+)__chain-(\d{8}T\d{6})__type-(full|incremental)__at-(\d{8}T\d{6})\.tar\.gz\.enc$"
+    r"^backup__host-([A-Za-z0-9._-]+)(?:__profile-([A-Za-z0-9._-]+))?__chain-(\d{8}T\d{6})__type-(full|incremental)__at-(\d{8}T\d{6})\.tar\.gz\.enc$"
 )
 JOB_ID_RE = re.compile(r"^\d{8}T\d{6}-[0-9a-f]{8}$")
 ALLOWED_BACKUP_MODES = {"auto", "full", "incremental"}
+BACKUP_COMPONENT_ORDER = ["databases", "site", "server", "email"]
 DEFAULT_BACKUP_TIMEOUT_MINUTES = 120
 MIN_BACKUP_TIMEOUT_MINUTES = 0
 MAX_BACKUP_TIMEOUT_MINUTES = 1440
@@ -59,6 +60,34 @@ def parse_timeout_minutes(value: object) -> int:
     return timeout_minutes
 
 
+def parse_backup_components(value: object) -> list[str]:
+    if value is None:
+        return list(BACKUP_COMPONENT_ORDER)
+
+    if isinstance(value, (list, tuple, set)):
+        candidates = [str(item).strip().lower() for item in value if str(item).strip()]
+    else:
+        raw = str(value).strip().lower()
+        if not raw or raw == "all":
+            return list(BACKUP_COMPONENT_ORDER)
+        candidates = [item.strip() for item in raw.split(",") if item.strip()]
+
+    if not candidates:
+        raise JobRunnerError("Yedek bileşenleri boş bırakılamaz.")
+
+    invalid_components = [item for item in candidates if item not in BACKUP_COMPONENT_ORDER]
+    if invalid_components:
+        raise JobRunnerError(f"Geçersiz yedek bileşenleri: {', '.join(invalid_components)}")
+
+    components: list[str] = []
+    for component in BACKUP_COMPONENT_ORDER:
+        if component in candidates:
+            components.append(component)
+    if not components:
+        raise JobRunnerError("Yedek bileşenleri boş bırakılamaz.")
+    return components
+
+
 def validate_job_path(job_path: Path) -> Path:
     try:
         resolved_job_path = job_path.resolve(strict=True)
@@ -89,6 +118,7 @@ def build_job_command(job: dict) -> tuple[list[str], dict[str, str], int | None]
         if mode not in ALLOWED_BACKUP_MODES:
             raise JobRunnerError(f"Geçersiz backup modu: {mode}")
         timeout_minutes = parse_timeout_minutes(meta.get("timeout_minutes", DEFAULT_BACKUP_TIMEOUT_MINUTES))
+        components = parse_backup_components(meta.get("components") or raw_job_env.get("BACKUP_COMPONENTS"))
         timeout_seconds = timeout_minutes * 60 if timeout_minutes > 0 else None
         return [
             str(BACKUP_SCRIPT)
@@ -96,6 +126,7 @@ def build_job_command(job: dict) -> tuple[list[str], dict[str, str], int | None]
             **base_env,
             "BACKUP_MODE": mode,
             "BACKUP_TIMEOUT_MINUTES": str(timeout_minutes),
+            "BACKUP_COMPONENTS": ",".join(components),
         }, timeout_seconds
 
     if job_type == "restore":

@@ -41,6 +41,7 @@ CHAIN_ID=""
 TARGET_TIMESTAMP=""
 TARGET_TYPE=""
 TARGET_HOST_SLUG=""
+TARGET_PROFILE_KEY=""
 
 if [ -t 1 ]; then
     RED='\033[0;31m'
@@ -186,16 +187,17 @@ prepare_env() {
 }
 
 parse_target_file() {
-    local pattern='^backup__host-([[:alnum:]_.-]+)__chain-([0-9]{8}T[0-9]{6})__type-(full|incremental)__at-([0-9]{8}T[0-9]{6})\.tar\.gz\.enc$'
+    local pattern='^backup__host-([[:alnum:]_.-]+)(?:__profile-([[:alnum:]_.-]+))?__chain-([0-9]{8}T[0-9]{6})__type-(full|incremental)__at-([0-9]{8}T[0-9]{6})\.tar\.gz\.enc$'
 
     if [[ ! "$TARGET_FILE" =~ $pattern ]]; then
         fatal "Desteklenmeyen backup dosya adi formati: ${TARGET_FILE}"
     fi
 
     TARGET_HOST_SLUG="${BASH_REMATCH[1]}"
-    CHAIN_ID="${BASH_REMATCH[2]}"
-    TARGET_TYPE="${BASH_REMATCH[3]}"
-    TARGET_TIMESTAMP="${BASH_REMATCH[4]}"
+    TARGET_PROFILE_KEY="${BASH_REMATCH[2]:-legacy-all}"
+    CHAIN_ID="${BASH_REMATCH[3]}"
+    TARGET_TYPE="${BASH_REMATCH[4]}"
+    TARGET_TIMESTAMP="${BASH_REMATCH[5]}"
 
     if [ "$ALLOW_CROSS_HOST_RESTORE" != "1" ] && [ "$TARGET_HOST_SLUG" != "$HOST_SLUG" ]; then
         fatal "Cross-host restore kapali. Hedef host=${TARGET_HOST_SLUG}, mevcut host=${HOST_SLUG}"
@@ -215,9 +217,10 @@ check_confirmation() {
 
 list_chain_files() {
     local remote_listing
-    local pattern='^backup__host-([[:alnum:]_.-]+)__chain-([0-9]{8}T[0-9]{6})__type-(full|incremental)__at-([0-9]{8}T[0-9]{6})\.tar\.gz\.enc$'
+    local pattern='^backup__host-([[:alnum:]_.-]+)(?:__profile-([[:alnum:]_.-]+))?__chain-([0-9]{8}T[0-9]{6})__type-(full|incremental)__at-([0-9]{8}T[0-9]{6})\.tar\.gz\.enc$'
     local line
     local file_host
+    local file_profile
     local file_chain
     local file_type
     local file_ts
@@ -235,11 +238,13 @@ list_chain_files() {
         [[ "$line" =~ $pattern ]] || continue
 
         file_host="${BASH_REMATCH[1]}"
-        file_chain="${BASH_REMATCH[2]}"
-        file_type="${BASH_REMATCH[3]}"
-        file_ts="${BASH_REMATCH[4]}"
+        file_profile="${BASH_REMATCH[2]:-legacy-all}"
+        file_chain="${BASH_REMATCH[3]}"
+        file_type="${BASH_REMATCH[4]}"
+        file_ts="${BASH_REMATCH[5]}"
 
         [ "$file_host" = "$TARGET_HOST_SLUG" ] || continue
+        [ "$file_profile" = "$TARGET_PROFILE_KEY" ] || continue
         [ "$file_chain" = "$CHAIN_ID" ] || continue
         [[ "$file_ts" > "$TARGET_TIMESTAMP" ]] && continue
 
@@ -446,7 +451,7 @@ main() {
     check_confirmation
     list_chain_files
     log "Hedef backup: ${TARGET_FILE}"
-    log "Zincir: ${CHAIN_ID} | Son tip: ${TARGET_TYPE}"
+    log "Profil: ${TARGET_PROFILE_KEY} | Zincir: ${CHAIN_ID} | Son tip: ${TARGET_TYPE}"
 
     if [ "$APPLY_RESTORE" -ne 1 ]; then
         log "Dry-run tamamlandi. Uygulamak icin --apply kullanin."

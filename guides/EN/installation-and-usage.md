@@ -79,6 +79,13 @@ chmod 600 /root/.config/cyberpanel-backup/encryption.pass
 BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh
 ```
 
+You can also back up only selected areas:
+
+```bash
+BACKUP_MODE=full BACKUP_COMPONENTS=databases /usr/local/bin/cyberpanel_full_backup.sh
+BACKUP_MODE=full BACKUP_COMPONENTS=site,server /usr/local/bin/cyberpanel_full_backup.sh
+```
+
 7. Schedule regular runs in `auto` mode:
 
 ```bash
@@ -111,20 +118,23 @@ Important environment variables:
 - `STATE_DIR`, default `/var/lib/cyberpanel-backup`
 - `LOG_FILE`, default `/var/log/cyberpanel_backup.log`
 - `ENCRYPTION_PASSWORD_FILE`, default `/root/.config/cyberpanel-backup/encryption.pass`
+- `BACKUP_COMPONENTS`, default `all`; available values `databases,site,server,email`
+
+Different component combinations are kept in separate chains. A database-only incremental chain does not affect the incremental state of site backups.
 
 ## Restore
 
 Validate the selected chain before applying changes:
 
 ```bash
-/usr/local/bin/cyberpanel_restore.sh --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc
+/usr/local/bin/cyberpanel_restore.sh --target-file backup__host-example.com__profile-all__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc
 ```
 
 Run a real restore:
 
 ```bash
 /usr/local/bin/cyberpanel_restore.sh \
-  --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc \
+  --target-file backup__host-example.com__profile-all__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc \
   --confirm-host "$(hostname -f)" \
   --apply
 ```

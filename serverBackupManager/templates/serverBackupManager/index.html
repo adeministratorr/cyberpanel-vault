@@ -420,6 +420,16 @@
                         </select>
                     </div>
                     <div>
+                        <label>Yedeklenecek alanlar</label>
+                        <div class="checklist">
+                            <label class="check"><input type="checkbox" name="backup_components" value="databases" {% if "databases" in backup_settings.backup_default_components %}checked{% endif %}> Veritabanı</label>
+                            <label class="check"><input type="checkbox" name="backup_components" value="site" {% if "site" in backup_settings.backup_default_components %}checked{% endif %}> Site dosyaları</label>
+                            <label class="check"><input type="checkbox" name="backup_components" value="server" {% if "server" in backup_settings.backup_default_components %}checked{% endif %}> Sunucu ayarları</label>
+                            <label class="check"><input type="checkbox" name="backup_components" value="email" {% if "email" in backup_settings.backup_default_components %}checked{% endif %}> E-posta verileri</label>
+                        </div>
+                        <div class="meta">Seçtiğiniz kombinasyon kendi zinciriyle tutulur. Veritabanı ve site yedeği birbirinin incremental durumunu bozmaz.</div>
+                    </div>
+                    <div>
                         <label for="timeout_minutes">Maksimum yedek süresi (dakika)</label>
                         <input
                             id="timeout_minutes"
@@ -479,6 +489,15 @@
                             <option value="incremental" {% if backup_settings.backup_schedule_mode == "incremental" %}selected{% endif %}>Artımlı</option>
                         </select>
                     </div>
+                    <div>
+                        <label>Zamanlamada çalışacak alanlar</label>
+                        <div class="checklist">
+                            <label class="check"><input type="checkbox" name="schedule_components" value="databases" {% if "databases" in backup_settings.backup_schedule_components %}checked{% endif %}> Veritabanı</label>
+                            <label class="check"><input type="checkbox" name="schedule_components" value="site" {% if "site" in backup_settings.backup_schedule_components %}checked{% endif %}> Site dosyaları</label>
+                            <label class="check"><input type="checkbox" name="schedule_components" value="server" {% if "server" in backup_settings.backup_schedule_components %}checked{% endif %}> Sunucu ayarları</label>
+                            <label class="check"><input type="checkbox" name="schedule_components" value="email" {% if "email" in backup_settings.backup_schedule_components %}checked{% endif %}> E-posta verileri</label>
+                        </div>
+                    </div>
                     <div class="checklist">
                         <label class="check"><input type="checkbox" name="schedule_weekdays" value="mon" {% if "mon" in backup_settings.backup_schedule_weekdays %}checked{% endif %}> Pazartesi</label>
                         <label class="check"><input type="checkbox" name="schedule_weekdays" value="tue" {% if "tue" in backup_settings.backup_schedule_weekdays %}checked{% endif %}> Salı</label>
@@ -506,7 +525,7 @@
                 </div>
                 <div class="summary-note" id="latest-backup-note">
                     {% if latest_backup_summary %}
-                        {{ latest_backup_summary.latest_kind|upper }} | Zincir: {{ latest_backup_summary.chain_id }} | Parça: {{ latest_backup_summary.backup_count }}
+                        {{ latest_backup_summary.latest_kind|upper }} | Profil: {{ latest_backup_summary.components_label }} | Zincir: {{ latest_backup_summary.chain_id }} | Parça: {{ latest_backup_summary.backup_count }}
                     {% else %}
                         Google Drive üzerinde bu sunucuya ait tamamlanmış yedek görünmüyor.
                     {% endif %}
@@ -519,7 +538,7 @@
                 </div>
                 <div class="summary-note" id="active-job-note">
                     {% if active_job_summary %}
-                        {{ active_job_summary.progress_label }}
+                        {{ active_job_summary.progress_label }}{% if active_job_summary.components_label %} | {{ active_job_summary.components_label }}{% endif %}
                     {% else %}
                         Şu anda çalışan ya da sırada bekleyen bir iş görünmüyor.
                     {% endif %}
@@ -565,6 +584,7 @@
                             <tr>
                                 <td>
                                     <strong>{{ chain.chain_id }}</strong><br>
+                                    <span class="meta">Profil: {{ chain.components_label }}</span><br>
                                     <span class="meta">İlk parça: {{ chain.full_timestamp }}</span>
                                 </td>
                                 <td>{{ chain.backup_count }}</td>
@@ -594,7 +614,7 @@
                     {% csrf_token %}
                     <div>
                         <label for="target_file">Hedef yedek</label>
-                        <input id="target_file" name="target_file" type="text" placeholder="backup__host-...tar.gz.enc">
+                        <input id="target_file" name="target_file" type="text" placeholder="backup__host-...__profile-all__chain-...tar.gz.enc">
                     </div>
                     <div>
                         <label for="confirm_host">Onay için sunucunun FQDN değerini yazın</label>
@@ -634,6 +654,9 @@
                             {% endif %}
                             {% if job.meta.mode %}
                                 <div class="meta">Mod: {{ job.meta.mode }}</div>
+                            {% endif %}
+                            {% if job.meta.components_label %}
+                                <div class="meta">Kapsam: {{ job.meta.components_label }}</div>
                             {% endif %}
                             {% if job.meta.timeout_minutes == 0 or job.meta.timeout_minutes %}
                                 <div class="meta">
@@ -729,7 +752,7 @@
 
             if (payload.latest_backup_summary) {
                 latestBackupValue.textContent = payload.latest_backup_summary.latest_timestamp;
-                latestBackupNote.textContent = `${payload.latest_backup_summary.latest_kind.toUpperCase()} | Zincir: ${payload.latest_backup_summary.chain_id} | Parça: ${payload.latest_backup_summary.backup_count}`;
+                latestBackupNote.textContent = `${payload.latest_backup_summary.latest_kind.toUpperCase()} | Profil: ${payload.latest_backup_summary.components_label || "Tüm bileşenler"} | Zincir: ${payload.latest_backup_summary.chain_id} | Parça: ${payload.latest_backup_summary.backup_count}`;
             } else {
                 latestBackupValue.textContent = "Henüz yok";
                 latestBackupNote.textContent = "Google Drive üzerinde bu sunucuya ait tamamlanmış yedek görünmüyor.";
@@ -737,7 +760,8 @@
 
             if (payload.active_job_summary) {
                 activeJobValue.textContent = (payload.active_job_summary.type || "").toUpperCase();
-                activeJobNote.textContent = payload.active_job_summary.progress_label || "";
+                const activeComponents = payload.active_job_summary.components_label ? ` | ${payload.active_job_summary.components_label}` : "";
+                activeJobNote.textContent = `${payload.active_job_summary.progress_label || ""}${activeComponents}`;
                 activeJobProgress.style.width = `${payload.active_job_summary.progress_percent || 0}%`;
                 activeJobStatus.textContent = payload.active_job_summary.status || "";
                 activeJobPercent.textContent = `${payload.active_job_summary.progress_percent || 0}%`;
@@ -784,8 +808,13 @@
                 chainCell.appendChild(document.createElement("br"));
                 const meta = document.createElement("span");
                 meta.className = "meta";
-                meta.textContent = `İlk parça: ${chain.full_timestamp || ""}`;
+                meta.textContent = `Profil: ${chain.components_label || "Tüm bileşenler"}`;
                 chainCell.appendChild(meta);
+                chainCell.appendChild(document.createElement("br"));
+                const fullMeta = document.createElement("span");
+                fullMeta.className = "meta";
+                fullMeta.textContent = `İlk parça: ${chain.full_timestamp || ""}`;
+                chainCell.appendChild(fullMeta);
                 row.appendChild(chainCell);
 
                 const countCell = document.createElement("td");
@@ -855,6 +884,13 @@
                 modeMeta.className = "meta";
                 modeMeta.textContent = `Mod: ${job.meta.mode}`;
                 article.appendChild(modeMeta);
+            }
+
+            if (job.meta && job.meta.components_label) {
+                const componentsMeta = document.createElement("div");
+                componentsMeta.className = "meta";
+                componentsMeta.textContent = `Kapsam: ${job.meta.components_label}`;
+                article.appendChild(componentsMeta);
             }
 
             if (job.meta && Object.prototype.hasOwnProperty.call(job.meta, "timeout_minutes")) {

@@ -61,6 +61,7 @@ BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
         <li>Automatic flow: <code>BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh</code></li>
         <li>Force a full backup: <code>BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh</code></li>
         <li>Force an incremental backup: <code>BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh</code></li>
+        <li>Back up selected areas with <code>BACKUP_COMPONENTS=databases</code> or <code>BACKUP_COMPONENTS=site,server</code></li>
         <li>Recommended cron entry: <code>0 3 * * * BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh</code></li>
       </ul>
 
