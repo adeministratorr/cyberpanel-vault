@@ -3,6 +3,7 @@
 CyberPanel Vault is a server-level backup and restore toolkit for CyberPanel deployments. It combines weekly full backups, incremental backup chains, encrypted Google Drive uploads through `rclone`, and a CyberPanel-ready management UI for running backup and restore jobs.
 
 Project website and publisher: [ademyuce.tr](https://ademyuce.tr)
+GitHub Pages: [adeministratorr.github.io/cyberpanel-vault](https://adeministratorr.github.io/cyberpanel-vault/)
 
 Suggested GitHub repository name: `cyberpanel-vault`
 
@@ -39,6 +40,7 @@ CyberPanel Vault fills that gap.
 
 ## Documentation
 
+- GitHub Pages landing page: [`docs/index.html`](/Users/ademyuce/Documents/CyberPanel/docs/index.html)
 - Turkish publishing guide: [`docs/TR/kurulum-ve-yayinlama.md`](/Users/ademyuce/Documents/CyberPanel/docs/TR/kurulum-ve-yayinlama.md)
 - English publishing guide: [`docs/EN/setup-and-publishing.md`](/Users/ademyuce/Documents/CyberPanel/docs/EN/setup-and-publishing.md)
 
@@ -70,6 +72,18 @@ Using GitHub web UI:
 3. Add the suggested description and topics.
 4. Upload the files from this directory.
 5. Upload the repository contents.
+
+## Enable GitHub Pages
+
+1. Open repository `Settings`.
+2. Go to `Pages`.
+3. Set `Source` to `Deploy from a branch`.
+4. Select branch `main` and folder `/docs`.
+5. Save and wait for the site to publish at `https://adeministratorr.github.io/cyberpanel-vault/`.
+
+Optional custom domain:
+
+- You can later map a custom domain from `ademyuce.tr`, but that requires DNS changes outside this repository.
 
 ## Notes
 

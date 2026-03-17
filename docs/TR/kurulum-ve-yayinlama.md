@@ -64,14 +64,28 @@ git push -u origin main
 
 ## SEO ve GEO notu
 
-Bu repo bir GitHub kod reposu olarak hazirlandi. Ayrica bir GitHub Pages landing page tutulmuyor.
+Bu repo hem GitHub kod reposu hem de `docs/` uzerinden yayinlanabilen bir GitHub Pages landing page ile hazirlandi.
 
-SEO ve GEO ayarlari GitHub repo metadata seviyesinde su sekilde ele alinmali:
+SEO ve GEO ayarlari iki katmanda ele alinmali:
 
 - Description alanini doldurun
 - Website alanina `https://ademyuce.tr` yazin
 - Topics alanlarini ekleyin
 - README icinde `ademyuce.tr` baglantisini koruyun
+- `docs/index.html` icinde canonical, Open Graph, Twitter card ve `geo.region` meta alanlarini koruyun
+- `docs/robots.txt` ve `docs/sitemap.xml` dosyalarini repo icinde tutun
+
+## GitHub Pages acma
+
+1. GitHub reposunda `Settings` sayfasini acin.
+2. Sol menuden `Pages` bolumune girin.
+3. `Source` secenegini `Deploy from a branch` yapin.
+4. Branch olarak `main`, klasor olarak `/docs` secin.
+5. Kaydedin.
+6. Yayinlandiktan sonra site su adreste acilir:
+   `https://adeministratorr.github.io/cyberpanel-vault/`
+
+Isterseniz daha sonra `ademyuce.tr` altinda bir custom domain tanimlayabilirsiniz. Bunun icin DNS yonlendirmesi gereklidir.
 
 ## Sunucuya kopyalama
 

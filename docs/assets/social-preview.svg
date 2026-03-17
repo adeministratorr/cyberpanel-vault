@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">CyberPanel Vault Social Preview</title>
+  <desc id="desc">Promotional image for CyberPanel Vault GitHub Pages</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f4efe3"/>
+      <stop offset="50%" stop-color="#fbf8f1"/>
+      <stop offset="100%" stop-color="#f3e5d5"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d9653b"/>
+      <stop offset="100%" stop-color="#143642"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="160" cy="110" r="120" fill="#ebb94d" opacity=".25"/>
+  <circle cx="1040" cy="120" r="130" fill="#d9653b" opacity=".15"/>
+  <rect x="80" y="80" width="1040" height="470" rx="36" fill="#ffffff" opacity=".82"/>
+  <rect x="120" y="120" width="180" height="180" rx="42" fill="url(#card)"/>
+  <path d="M210 156c18 15 40 22 58 25v34c0 34-20 59-58 79-38-20-58-45-58-79v-34c18-3 40-10 58-25Z" fill="#fbf8f1" transform="translate(-52 -34) scale(1.05)"/>
+  <circle cx="210" cy="220" r="28" fill="#143642"/>
+  <circle cx="210" cy="220" r="10" fill="#ebb94d"/>
+  <path d="M210 231v28" stroke="#143642" stroke-width="14" stroke-linecap="round"/>
+  <text x="340" y="210" fill="#143642" font-size="78" font-family="Palatino Linotype, Book Antiqua, serif" font-weight="700">CyberPanel Vault</text>
+  <text x="340" y="284" fill="#4c6670" font-size="34" font-family="Avenir Next, Segoe UI, sans-serif">Encrypted weekly full backups, incremental chains,</text>
+  <text x="340" y="328" fill="#4c6670" font-size="34" font-family="Avenir Next, Segoe UI, sans-serif">Google Drive uploads, and restore tooling for CyberPanel.</text>
+  <rect x="340" y="378" width="290" height="60" rx="30" fill="#143642"/>
+  <text x="392" y="418" fill="#fbf8f1" font-size="28" font-family="Avenir Next, Segoe UI, sans-serif">ademyuce.tr</text>
+  <rect x="660" y="378" width="340" height="60" rx="30" fill="#d9653b"/>
+  <text x="720" y="418" fill="#fbf8f1" font-size="28" font-family="Avenir Next, Segoe UI, sans-serif">github.com/adeministratorr</text>
+</svg>

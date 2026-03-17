@@ -1,0 +1,9 @@
+{
+  "name": "CyberPanel Vault",
+  "short_name": "CP Vault",
+  "description": "Encrypted weekly full and incremental backup workflows for CyberPanel servers.",
+  "start_url": "/cyberpanel-vault/",
+  "display": "standalone",
+  "background_color": "#fbf8f1",
+  "theme_color": "#143642"
+}

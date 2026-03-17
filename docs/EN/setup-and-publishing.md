@@ -64,14 +64,28 @@ git push -u origin main
 
 ## SEO and GEO note
 
-This repository is prepared as a GitHub code repository, not as a GitHub Pages landing page.
+This repository is prepared both as a GitHub code repository and as a GitHub Pages landing page served from `docs/`.
 
-SEO and GEO signals should be handled at the repository metadata level:
+SEO and GEO signals should be handled at two levels:
 
 - set the repository description
 - set the website field to `https://ademyuce.tr`
 - add the recommended topics
 - keep the `ademyuce.tr` reference in the README
+- keep canonical, Open Graph, Twitter card, and `geo.region` metadata in `docs/index.html`
+- keep `docs/robots.txt` and `docs/sitemap.xml` in the repository
+
+## Enable GitHub Pages
+
+1. Open the repository `Settings`.
+2. Go to `Pages`.
+3. Set `Source` to `Deploy from a branch`.
+4. Choose branch `main` and folder `/docs`.
+5. Save the settings.
+6. The published site will be available at:
+   `https://adeministratorr.github.io/cyberpanel-vault/`
+
+You can later map a custom domain from `ademyuce.tr`, but that requires DNS configuration outside the repository.
 
 ## Server deployment
 
