@@ -255,6 +255,13 @@ WEB_USER=WEB_SURECI_KULLANICISI bash install_cyberpanel_integration.sh
 
 Installer; Django uygulamasını kopyalar, betikleri kurar, root runner'ı yazar, `settings.py` ile `urls.py` dosyalarını günceller ve gerekli `sudoers` kuralını ekler.
 
+Kurulumdan sonra doğrulama için şu betiği çalıştırabilirsiniz:
+
+```bash
+cd /opt/cyberpanel-vault
+bash test_cyberpanel_integration.sh --panel-url https://panel-adresiniz/server-backup/
+```
+
 ### 1. Uygulama klasörünü CyberPanel kod tabanına kopyalayın
 
 Önce bu repo içindeki `serverBackupManager/` klasörünü, CyberPanel'in Django uygulamalarının bulunduğu yere kopyalayın. Hedef klasör sizin sunucunuzdaki CyberPanel kurulumuna göre değişebilir. Mantık şudur: Bu klasör, diğer Django app'lerin durduğu yerde olmalıdır.

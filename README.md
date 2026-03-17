@@ -171,6 +171,12 @@ If your CyberPanel web process does not run as the default `cyberpanel` user, pa
 WEB_USER=YOUR_WEB_USER bash install_cyberpanel_integration.sh
 ```
 
+After installation, run the verification script:
+
+```bash
+bash test_cyberpanel_integration.sh --panel-url https://panel.example.com/server-backup/
+```
+
 The installer copies the Django app into the CyberPanel codebase, installs the shell scripts, writes a restricted root runner, patches `settings.py` and `urls.py`, and creates a `sudoers` rule so the panel can launch root-only backup jobs safely.
 
 Manual integration points:
