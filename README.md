@@ -5,8 +5,6 @@ CyberPanel Vault is a server-level backup and restore toolkit for CyberPanel dep
 Project website and publisher: [Adem YÜCE](https://ademyuce.tr) - [ademyuce.tr](https://ademyuce.tr)
 GitHub Pages: [adeministratorr.github.io/cyberpanel-vault](https://adeministratorr.github.io/cyberpanel-vault/)
 
-Suggested GitHub repository name: `cyberpanel-vault`
-
 ## Why this project exists
 
 CyberPanel Backup V2 is useful for website-level backups, but production servers often need a separate host-level workflow for:
@@ -41,52 +39,117 @@ CyberPanel Vault fills that gap.
 ## Documentation
 
 - GitHub Pages landing page: [`docs/index.html`](/Users/ademyuce/Documents/CyberPanel/docs/index.html)
-- Turkish publishing guide: [`docs/TR/kurulum-ve-yayinlama.md`](/Users/ademyuce/Documents/CyberPanel/docs/TR/kurulum-ve-yayinlama.md)
-- English publishing guide: [`docs/EN/setup-and-publishing.md`](/Users/ademyuce/Documents/CyberPanel/docs/EN/setup-and-publishing.md)
+- Turkish installation and usage guide: [`docs/TR/kurulum-ve-kullanim.md`](/Users/ademyuce/Documents/CyberPanel/docs/TR/kurulum-ve-kullanim.md)
+- English installation and usage guide: [`docs/EN/installation-and-usage.md`](/Users/ademyuce/Documents/CyberPanel/docs/EN/installation-and-usage.md)
 
-## Suggested GitHub metadata
+## Requirements
 
-- Repository name: `cyberpanel-vault`
-- Description:
-  `CyberPanel server backup and restore manager with weekly full backups, incremental chains, Google Drive support, encryption, and a CyberPanel-ready UI.`
-- Website:
-  `https://ademyuce.tr`
-- Topics:
-  `cyberpanel`, `backup`, `restore`, `google-drive`, `rclone`, `incremental-backup`, `server-management`, `django`, `openlitespeed`, `devops`
+- Linux server with `root` access
+- `rclone`, `mysql`, `mysqldump`, `openssl`, `tar`, `gzip`, `sha256sum`, `flock`, `rsync`
+- CyberPanel MySQL root password file at `/etc/cyberpanel/mysqlPassword`
+- An `rclone` remote for Google Drive, or equivalent values for `RCLONE_REMOTE` and `DRIVE_FOLDER`
+- Encryption password file at `/root/.config/cyberpanel-backup/encryption.pass`
 
-## Quick publish
+## Installation
 
-Using Git CLI:
+1. Copy the shell scripts to your server:
 
 ```bash
-git init -b main
-git add .
-git commit -m "Initial release: CyberPanel Vault"
-gh repo create cyberpanel-vault --public --source=. --remote=origin --push
+install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
+install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh
 ```
 
-Using GitHub web UI:
+2. Create the required runtime directories:
 
-1. Create a new repository named `cyberpanel-vault`.
-2. Set the website field to `https://ademyuce.tr`.
-3. Add the suggested description and topics.
-4. Upload the files from this directory.
-5. Upload the repository contents.
+```bash
+mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
+chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
+```
 
-## Enable GitHub Pages
+3. Create the encryption password file:
 
-1. Open repository `Settings`.
-2. Go to `Pages`.
-3. Set `Source` to `Deploy from a branch`.
-4. Select branch `main` and folder `/docs`.
-5. Save and wait for the site to publish at `https://adeministratorr.github.io/cyberpanel-vault/`.
+```bash
+printf '%s\n' 'CHANGE_THIS_TO_A_LONG_RANDOM_SECRET' >/root/.config/cyberpanel-backup/encryption.pass
+chmod 600 /root/.config/cyberpanel-backup/encryption.pass
+```
 
-Optional custom domain:
+4. Configure `rclone` so the backup host can write to your Google Drive remote. The default remote name is `gdrive`.
 
-- You can later map a custom domain from `ademyuce.tr`, but that requires DNS changes outside this repository.
+5. Run the first backup manually:
+
+```bash
+BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh
+```
+
+6. Schedule regular runs with `BACKUP_MODE=auto`. In `auto` mode the script takes a weekly full backup and incremental backups between full runs.
+
+Example cron:
+
+```bash
+0 3 * * * BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh
+```
+
+## Backup usage
+
+- Automatic mode: `BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh`
+- Force a full backup: `BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh`
+- Force an incremental backup: `BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh`
+
+Important runtime variables:
+
+- `RCLONE_REMOTE`: default `gdrive`
+- `DRIVE_FOLDER`: default `cyberpanel-backups`
+- `BACKUP_DIR`: default `/root/backups`
+- `STATE_DIR`: default `/var/lib/cyberpanel-backup`
+- `LOG_FILE`: default `/var/log/cyberpanel_backup.log`
+- `ENCRYPTION_PASSWORD_FILE`: default `/root/.config/cyberpanel-backup/encryption.pass`
+
+## Restore usage
+
+First validate the selected backup chain without changing the server:
+
+```bash
+/usr/local/bin/cyberpanel_restore.sh --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc
+```
+
+Apply a real restore:
+
+```bash
+/usr/local/bin/cyberpanel_restore.sh \
+  --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc \
+  --confirm-host "$(hostname -f)" \
+  --apply
+```
+
+Optional restore flags:
+
+- `--skip-db`
+- `--skip-files`
+- `--skip-configs`
+- `--skip-services`
+- `--keep-workdir`
+
+## CyberPanel integration
+
+The [`serverBackupManager/`](/Users/ademyuce/Documents/CyberPanel/serverBackupManager) directory is a Django app/plugin skeleton for CyberPanel-style integration.
+
+Minimum integration points:
+
+1. Place `serverBackupManager/` inside the target CyberPanel Python/Django codebase.
+2. Mount [`urls.py`](/Users/ademyuce/Documents/CyberPanel/serverBackupManager/urls.py) into the panel routing.
+3. Set the script paths:
+
+```bash
+export CYBERPANEL_SERVER_BACKUP_SCRIPT=/usr/local/bin/cyberpanel_full_backup.sh
+export CYBERPANEL_SERVER_RESTORE_SCRIPT=/usr/local/bin/cyberpanel_restore.sh
+export CYBERPANEL_SERVER_BACKUP_UI_STATE_DIR=/var/lib/cyberpanel-backup-ui
+```
+
+4. Ensure the web process can spawn background jobs and that `rclone` is available on the host.
 
 ## Notes
 
 - The backup and restore scripts are designed for Linux servers and must run as `root`.
 - The Django app is a plugin skeleton, not a drop-in upstream CyberPanel module.
+- Backup files are filtered by host slug, so the restore UI only lists chains that match the current host FQDN.
 - Before production use, test a full restore on a staging server.

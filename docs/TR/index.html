@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CyberPanel Vault | Kurulum ve GitHub Pages Yayini</title>
-  <meta name="description" content="CyberPanel Vault icin Turkce GitHub yukleme, GitHub Pages acma, sunucu kurulumu ve CyberPanel entegrasyon rehberi.">
+  <title>CyberPanel Vault | Kurulum ve Kullanim Rehberi</title>
+  <meta name="description" content="CyberPanel Vault icin Turkce kurulum, backup kullanimi, restore akisi ve CyberPanel entegrasyon rehberi.">
   <meta name="robots" content="index, follow">
   <meta name="geo.region" content="TR">
   <meta name="geo.placename" content="Turkey">
@@ -128,60 +128,53 @@
     </nav>
 
     <article class="card">
-      <span class="eyebrow">Turkce Kurulum Rehberi</span>
-      <h1>GitHub repo, GitHub Pages ve sunucu kurulumu icin hazir akis</h1>
-      <p>Bu sayfa, <strong>CyberPanel Vault</strong> reposunu GitHub'a yuklemek, GitHub Pages ile yayinlamak ve sunucuda backup-restore akisini devreye almak icin gereken temel adimlari toplar. Yayinci referansi: <a href="https://ademyuce.tr">Adem YÜCE</a> - <a href="https://ademyuce.tr">ademyuce.tr</a>.</p>
+      <span class="eyebrow">Turkce Kurulum ve Kullanim</span>
+      <h1>Sunucu seviyesinde backup ve restore icin pratik kurulum akisi</h1>
+      <p>Bu sayfa, <strong>CyberPanel Vault</strong> projesini bir CyberPanel host'una kurmak, ilk backup'i almak, zincirli restore yapmak ve CyberPanel arayuzune baglamak icin gereken temel adimlari toplar. Yayinci referansi: <a href="https://ademyuce.tr">Adem YÜCE</a> - <a href="https://ademyuce.tr">ademyuce.tr</a>.</p>
 
-      <h2>Onerilen repo kimligi</h2>
+      <h2>Gereksinimler</h2>
       <ul>
-        <li>Proje adi: <code>CyberPanel Vault</code></li>
-        <li>Repo adi: <code>cyberpanel-vault</code></li>
-        <li>Website: <code>https://ademyuce.tr</code></li>
-        <li>Pages URL: <code>https://adeministratorr.github.io/cyberpanel-vault/</code></li>
-      </ul>
-
-      <h2>GitHub repo metadata</h2>
-      <ul>
-        <li>Description: <code>CyberPanel server backup and restore manager with weekly full backups, incremental chains, Google Drive support, encryption, and a CyberPanel-ready UI.</code></li>
-        <li>Topics: <code>cyberpanel</code>, <code>backup</code>, <code>restore</code>, <code>google-drive</code>, <code>rclone</code>, <code>incremental-backup</code>, <code>server-management</code>, <code>django</code>, <code>openlitespeed</code>, <code>devops</code></li>
+        <li><code>root</code> erisimli Linux sunucu</li>
+        <li><code>rclone</code>, <code>mysql</code>, <code>mysqldump</code>, <code>openssl</code>, <code>tar</code>, <code>gzip</code>, <code>sha256sum</code>, <code>flock</code>, <code>rsync</code></li>
+        <li><code>/etc/cyberpanel/mysqlPassword</code> dosyasi</li>
+        <li>Google Drive icin calisan bir <code>rclone</code> remote'u</li>
+        <li><code>/root/.config/cyberpanel-backup/encryption.pass</code> dosyasi</li>
       </ul>
 
       <div class="grid">
         <section class="mini">
-          <h2>Git ile yukleme</h2>
-          <pre><code>git add .
-git commit -m "Publish GitHub Pages landing page"
-git push origin main</code></pre>
+          <h2>Hizli kurulum</h2>
+          <pre><code>install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
+install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh
+mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup
+chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup</code></pre>
         </section>
         <section class="mini">
-          <h2>Pages acma</h2>
-          <ol>
-            <li><code>Settings</code> sayfasina girin.</li>
-            <li><code>Pages</code> bolumunu acin.</li>
-            <li><code>Deploy from a branch</code> secin.</li>
-            <li>Branch olarak <code>main</code>, klasor olarak <code>/docs</code> secin.</li>
-            <li>Kaydedip yayin URL'sini kontrol edin.</li>
-          </ol>
+          <h2>Ilk backup</h2>
+          <pre><code>printf '%s\n' 'GUCLU_UZUN_BIR_SIFRE' >/root/.config/cyberpanel-backup/encryption.pass
+chmod 600 /root/.config/cyberpanel-backup/encryption.pass
+BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
         </section>
       </div>
 
-      <h2>SEO ve GEO</h2>
+      <h2>Gunluk kullanim</h2>
       <ul>
-        <li><code>docs/index.html</code> icinde title, description, canonical, Open Graph ve Twitter card alanlari bulunur.</li>
-        <li><code>geo.region</code> ve <code>geo.placename</code> meta alanlari tanimlidir.</li>
-        <li><code>docs/robots.txt</code> ve <code>docs/sitemap.xml</code> Pages yayinina dahildir.</li>
+        <li>Otomatik akis: <code>BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh</code></li>
+        <li>Zorunlu tam yedek: <code>BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh</code></li>
+        <li>Zorunlu incremental: <code>BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh</code></li>
+        <li>Onerilen cron: <code>0 3 * * * BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh</code></li>
       </ul>
 
-      <h2>Sunucu kurulum notlari</h2>
+      <h2>Restore</h2>
       <ul>
-        <li><code>cyberpanel_full_backup.sh</code> ve <code>cyberpanel_restore.sh</code> root altinda calismalidir.</li>
-        <li>Sunucuda <code>rclone</code>, <code>mysqldump</code>, <code>openssl</code> ve ilgili servis dosyalari bulunmalidir.</li>
-        <li>Sifre dosyasi icin onerilen yol: <code>/root/.config/cyberpanel-backup/encryption.pass</code></li>
-        <li>Restore islerini uretimde kullanmadan once staging uzerinde test edin.</li>
+        <li>Planlama ve dogrulama: <code>/usr/local/bin/cyberpanel_restore.sh --target-file DOSYA_ADI</code></li>
+        <li>Gercek restore: <code>/usr/local/bin/cyberpanel_restore.sh --target-file DOSYA_ADI --confirm-host "$(hostname -f)" --apply</code></li>
+        <li>Parcali restore icin <code>--skip-db</code>, <code>--skip-files</code>, <code>--skip-configs</code>, <code>--skip-services</code> kullanilabilir.</li>
+        <li>Uretimde kullanmadan once staging uzerinde tam restore testi yapin.</li>
       </ul>
 
       <h2>CyberPanel entegrasyonu</h2>
-      <p><code>serverBackupManager/</code> dizini bir Django app iskeletidir. Bunu CyberPanel plugin yapisina yerlestirip backup ve restore islerini panel arayuzunden tetikleyebilirsiniz.</p>
+      <p><code>serverBackupManager/</code> dizini bir Django app iskeletidir. Bunu CyberPanel plugin yapisina yerlestirip backup ve restore islerini panel arayuzunden tetikleyebilirsiniz. Ayrintili markdown rehber: <a href="kurulum-ve-kullanim.md">kurulum-ve-kullanim.md</a>.</p>
     </article>
 
     <footer class="footer">
