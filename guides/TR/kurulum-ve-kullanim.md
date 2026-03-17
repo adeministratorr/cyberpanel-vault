@@ -255,7 +255,7 @@ Server Backup Manager kurulduğunda yedekleme ve geri yükleme işlemlerini term
 
 - Önce shell script tarafı çalışıyor olmalıdır. Yani `cyberpanel_full_backup.sh` ve `cyberpanel_restore.sh` kurulu olmalı.
 - Google Drive bağlantısı hazır olmalıdır. Bunun için `rclone lsd gdrive:` komutu hata vermemeli.
-- E-posta bildirimi kullanacaksanız sunucuda `sendmail` uyumlu yerel bir posta servisi bulunmalıdır.
+- E-posta bildirimi kullanacaksanız CyberPanel içinde `Server Mail` ayarı yapılmış olmalı ve admin hesabının e-posta adresi doğru girilmiş olmalıdır.
 - Bu bölüm, CyberPanel'in Django yapısına dosya eklemeyi gerektirir. Yani sadece kopyala ve çalıştır mantığında değildir.
 - Bu ekranı kullanacak kişinin panelde yönetici yetkisi olmalıdır.
 
@@ -387,9 +387,9 @@ Bu bölüm tek bir zamanlama kaydı yönetir. Aynı anda birden fazla farklı ta
 
 ### 3. E-posta bildirimi
 
-**E-posta Bildirimi** bölümünde alıcı adresini yazıp hangi durumda mail gideceğini seçebilirsiniz. İsterseniz sadece hata olduğunda, isterseniz başarıyla tamamlandığında da bildirim gönderebilirsiniz.
+**E-posta Bildirimi** bölümünde hangi durumda mail gideceğini seçebilirsiniz. İsterseniz doğrudan CyberPanel admin hesabının kayıtlı e-posta adresini kullanır, isterseniz özel bir alıcı adresi girersiniz.
 
-Bu mail, sunucudaki yerel `sendmail` uyumlu posta altyapısı üzerinden gönderilir. CyberPanel kurulu sunucularda bu pratikte host üzerindeki MTA yapılandırmasını kullanır.
+Bu bildirim, CyberPanel içindeki Django mail altyapısı üzerinden gönderilir. Yani panelde `Server Mail` tarafında tanımlı yol neyse, bildirim de onu kullanır.
 ### 4. Yedeklerin durumunu izleme
 
 Sayfanın alt kısmındaki **Son İşler** alanında başlatılan işleri görürsünüz. Burada işin:

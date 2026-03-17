@@ -521,6 +521,10 @@
                         <input id="notification_enabled" type="checkbox" name="notification_enabled" {% if backup_settings.backup_notification_enabled %}checked{% endif %}>
                         Yedek işi bittiğinde e-posta gönder
                     </label>
+                    <label class="check">
+                        <input id="notification_use_admin" type="checkbox" name="notification_use_admin" {% if backup_settings.backup_notification_use_admin %}checked{% endif %}>
+                        CyberPanel admin hesabının e-posta adresini kullan
+                    </label>
                     <div>
                         <label for="notification_email">Alıcı e-posta adresi</label>
                         <input
@@ -535,7 +539,7 @@
                         <label class="check"><input id="notification_on_success" type="checkbox" name="notification_on_success" {% if backup_settings.backup_notification_on_success %}checked{% endif %}> Başarıyla tamamlanınca</label>
                         <label class="check"><input id="notification_on_failure" type="checkbox" name="notification_on_failure" {% if backup_settings.backup_notification_on_failure %}checked{% endif %}> Hata olunca</label>
                     </div>
-                    <div class="meta">Mail, sunucudaki yerel <code>sendmail</code> uyumlu posta altyapısı üzerinden gönderilir. CyberPanel kurulu hostlarda bu pratikte yerel MTA yapılandırmasını kullanır.</div>
+                    <div class="meta">Bildirim, CyberPanel içindeki Django mail altyapısı üzerinden gönderilir. CyberPanel admin adresini kullanırsanız panelde kayıtlı yönetici e-postası hedef alınır.</div>
                     <button class="secondary" type="submit">Bildirim Ayarını Kaydet</button>
                 </form>
 
@@ -741,6 +745,7 @@
         const scheduleSummaryNote = document.getElementById("schedule-summary-note");
         const notificationSummaryNote = document.getElementById("notification-summary-note");
         const notificationEmailInput = document.getElementById("notification_email");
+        const notificationUseAdminInput = document.getElementById("notification_use_admin");
         const notificationEnabledInput = document.getElementById("notification_enabled");
         const notificationOnSuccessInput = document.getElementById("notification_on_success");
         const notificationOnFailureInput = document.getElementById("notification_on_failure");
@@ -760,6 +765,18 @@
         }
 
         bindTargetSelects();
+
+        function toggleNotificationEmailState() {
+            if (!notificationEmailInput || !notificationUseAdminInput) {
+                return;
+            }
+            notificationEmailInput.readOnly = notificationUseAdminInput.checked;
+        }
+
+        toggleNotificationEmailState();
+        if (notificationUseAdminInput) {
+            notificationUseAdminInput.addEventListener("change", toggleNotificationEmailState);
+        }
 
         function setDownloadLink(jobId) {
             if (!jobId) {
@@ -825,6 +842,7 @@
                 if (notificationEmailInput && document.activeElement !== notificationEmailInput) {
                     notificationEmailInput.value = payload.backup_settings.backup_notification_email ?? notificationEmailInput.value;
                 }
+                toggleNotificationEmailState();
             }
         }
 

@@ -276,10 +276,10 @@ check_notification_mailer() {
     fi
 
     if grep -Fq '"backup_notification_enabled": true' "$settings_path"; then
-        if command -v sendmail >/dev/null 2>&1; then
-            pass "E-posta bildirimi icin sendmail bulundu"
+        if grep -Fq '"backup_notification_use_admin": true' "$settings_path"; then
+            pass "E-posta bildirimi CyberPanel admin adresini kullanacak sekilde ayarli"
         else
-            warn "E-posta bildirimi acik ama sendmail komutu bulunamadi"
+            warn "E-posta bildirimi acik; ozel alici adresinin gecerli oldugunu panelden kontrol edin"
         fi
     fi
 }

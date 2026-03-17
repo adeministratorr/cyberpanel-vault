@@ -3,7 +3,6 @@
 import json
 import os
 import re
-import shutil
 import signal
 import socket
 import subprocess
@@ -29,9 +28,15 @@ DEFAULT_BACKUP_TIMEOUT_MINUTES = 120
 MIN_BACKUP_TIMEOUT_MINUTES = 0
 MAX_BACKUP_TIMEOUT_MINUTES = 1440
 TIMEOUT_GRACE_SECONDS = 30
+CYBERPANEL_DJANGO_ROOT = Path(
+    os.environ.get("CYBERPANEL_SERVER_BACKUP_DJANGO_ROOT", str(Path(__file__).resolve().parent.parent))
+)
+CYBERPANEL_DJANGO_SETTINGS_MODULE = os.environ.get(
+    "CYBERPANEL_SERVER_BACKUP_DJANGO_SETTINGS_MODULE",
+    "CyberCP.settings",
+)
 DEFAULT_NOTIFY_FROM = os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_FROM", f"root@{HOST_FQDN}")
 DEFAULT_NOTIFY_SUBJECT_PREFIX = os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_SUBJECT_PREFIX", "[CyberPanel Vault]")
-NOTIFY_SENDMAIL_COMMAND = os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_SENDMAIL", "sendmail")
 
 
 class JobRunnerError(RuntimeError):
@@ -195,6 +200,49 @@ def _notification_requested(job: dict) -> bool:
     return False
 
 
+def _load_cyberpanel_mail_stack():
+    django_root = str(CYBERPANEL_DJANGO_ROOT)
+    if django_root not in sys.path:
+        sys.path.insert(0, django_root)
+
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", CYBERPANEL_DJANGO_SETTINGS_MODULE)
+
+    try:
+        import django
+        django.setup()
+        from django.conf import settings as django_settings
+        from django.contrib.auth import get_user_model
+        from django.core.mail import send_mail
+    except Exception as exc:  # noqa: BLE001
+        raise JobRunnerError(f"CyberPanel mail altyapısı yüklenemedi: {exc}") from exc
+
+    return send_mail, get_user_model(), django_settings
+
+
+def _resolve_notification_recipient(job: dict, user_model) -> str:
+    meta = job.get("meta") or {}
+    if not meta.get("notify_use_admin"):
+        return str(meta.get("notify_email", "")).strip()
+
+    admin_candidate = (
+        user_model.objects.filter(is_superuser=True)
+        .exclude(email__isnull=True)
+        .exclude(email__exact="")
+        .filter(username__iexact="admin")
+        .order_by("id")
+        .first()
+    )
+    if admin_candidate is None:
+        admin_candidate = (
+            user_model.objects.filter(is_superuser=True)
+            .exclude(email__isnull=True)
+            .exclude(email__exact="")
+            .order_by("id")
+            .first()
+        )
+    return str(getattr(admin_candidate, "email", "") or "").strip()
+
+
 def _append_notification_log(log_path: Path | None, line: str) -> None:
     if log_path is None:
         return
@@ -261,45 +309,37 @@ def send_job_notification(job: dict) -> None:
         return
 
     log_path = resolve_log_path(job)
-    recipient = str((job.get("meta") or {}).get("notify_email", "")).strip()
+    try:
+        send_mail, user_model, django_settings = _load_cyberpanel_mail_stack()
+    except JobRunnerError as exc:
+        _append_notification_log(log_path, f"[notify] cyberpanel_mail_unavailable={exc}")
+        return
+
+    recipient = _resolve_notification_recipient(job, user_model)
     if not recipient:
         _append_notification_log(log_path, "[notify] recipient_missing=1")
         return
 
-    sendmail_path = NOTIFY_SENDMAIL_COMMAND
-    if not os.path.isabs(sendmail_path):
-        resolved_sendmail = shutil.which(sendmail_path)
-        if resolved_sendmail:
-            sendmail_path = resolved_sendmail
-
-    if not sendmail_path or not os.path.exists(sendmail_path):
-        _append_notification_log(log_path, f"[notify] sendmail_not_found={NOTIFY_SENDMAIL_COMMAND}")
-        return
-
-    message = (
-        f"From: {DEFAULT_NOTIFY_FROM}\n"
-        f"To: {recipient}\n"
-        f"Subject: {_notification_subject(job)}\n"
-        "Content-Type: text/plain; charset=utf-8\n"
-        "\n"
-        f"{_notification_body(job, log_path)}\n"
+    from_email = (
+        str(getattr(django_settings, "DEFAULT_FROM_EMAIL", "") or "").strip()
+        or str(getattr(django_settings, "SERVER_EMAIL", "") or "").strip()
+        or DEFAULT_NOTIFY_FROM
     )
 
     try:
-        result = subprocess.run(
-            [sendmail_path, "-t", "-oi"],
-            input=message,
-            text=True,
-            capture_output=True,
-            timeout=30,
+        result = send_mail(
+            _notification_subject(job),
+            _notification_body(job, log_path),
+            from_email,
+            [recipient],
+            fail_silently=False,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except Exception as exc:  # noqa: BLE001
         _append_notification_log(log_path, f"[notify] send_failed={exc}")
         return
 
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "").strip() or f"exit={result.returncode}"
-        _append_notification_log(log_path, f"[notify] send_failed={detail}")
+    if int(result or 0) < 1:
+        _append_notification_log(log_path, "[notify] send_failed=no_message_sent")
         return
 
     _append_notification_log(log_path, f"[notify] sent_to={recipient}")

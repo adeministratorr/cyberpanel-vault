@@ -210,7 +210,7 @@ BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
       <ul>
         <li>Önce shell script tarafı çalışıyor olmalıdır. Yani <code>cyberpanel_full_backup.sh</code> ve <code>cyberpanel_restore.sh</code> kurulu olmalı.</li>
         <li>Google Drive bağlantısı hazır olmalıdır. Bunun için <code>rclone lsd gdrive:</code> komutu hata vermemeli.</li>
-        <li>E-posta bildirimi kullanacaksanız sunucuda <code>sendmail</code> uyumlu yerel bir posta servisi bulunmalıdır.</li>
+        <li>E-posta bildirimi kullanacaksanız CyberPanel içinde <code>Server Mail</code> ayarı yapılmış olmalı ve admin hesabının e-posta adresi doğru girilmiş olmalıdır.</li>
         <li>Bu bölüm, CyberPanel'in Django yapısına dosya eklemeyi gerektirir. Yani sadece kopyala ve çalıştır mantığında değildir.</li>
         <li>Bu ekranı kullanacak kişinin panelde yönetici yetkisi olmalıdır.</li>
       </ul>
@@ -293,8 +293,8 @@ chmod 700 /var/lib/cyberpanel-backup-ui /var/lib/cyberpanel-backup-ui/jobs</code
       <p>Bu bölüm tek bir zamanlama kaydı yönetir. Yani aynı anda birden fazla farklı takvim tanımlamak değil, seçtiğiniz kombinasyonu planlamak içindir.</p>
 
       <h3>3. E-posta bildirimi</h3>
-      <p><strong>E-posta Bildirimi</strong> bölümünde alıcı adresini yazıp hangi durumda mail gideceğini seçebilirsiniz. İsterseniz sadece hata olduğunda, isterseniz başarıyla tamamlandığında da bildirim gönderebilirsiniz.</p>
-      <p>Bu mail, sunucudaki yerel <code>sendmail</code> uyumlu posta altyapısı üzerinden gönderilir. CyberPanel kurulu sunucularda bu pratikte host üzerindeki MTA yapılandırmasını kullanır.</p>
+      <p><strong>E-posta Bildirimi</strong> bölümünde hangi durumda mail gideceğini seçebilirsiniz. İsterseniz doğrudan CyberPanel admin hesabının kayıtlı e-posta adresini kullanır, isterseniz özel bir alıcı adresi girersiniz.</p>
+      <p>Bu bildirim, CyberPanel içindeki Django mail altyapısı üzerinden gönderilir. Yani panelde <code>Server Mail</code> tarafında tanımlı yol neyse, bildirim de onu kullanır.</p>
 
       <h3>4. Yedeklerin durumunu izleme</h3>
       <p>Sayfanın alt kısmındaki <strong>Son İşler</strong> alanında başlatılan işleri görürsünüz. Burada işin:</p>

@@ -96,6 +96,7 @@ def save_schedule(request: HttpRequest) -> HttpResponse:
 @require_POST
 def save_notifications(request: HttpRequest) -> HttpResponse:
     notification_enabled = request.POST.get("notification_enabled") == "on"
+    notification_use_admin = request.POST.get("notification_use_admin") == "on"
     notification_email = request.POST.get("notification_email", "").strip()
     notification_on_success = request.POST.get("notification_on_success") == "on"
     notification_on_failure = request.POST.get("notification_on_failure") == "on"
@@ -103,6 +104,7 @@ def save_notifications(request: HttpRequest) -> HttpResponse:
     try:
         settings = services.update_backup_notifications(
             enabled=notification_enabled,
+            use_admin=notification_use_admin,
             email=notification_email,
             on_success=notification_on_success,
             on_failure=notification_on_failure,

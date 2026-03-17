@@ -53,6 +53,7 @@ DEFAULT_NOTIFICATION_ENABLED = False
 DEFAULT_NOTIFICATION_EMAIL = str(os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_EMAIL", "")).strip()
 DEFAULT_NOTIFICATION_ON_SUCCESS = False
 DEFAULT_NOTIFICATION_ON_FAILURE = True
+DEFAULT_NOTIFICATION_USE_ADMIN = True
 BACKUP_COMPONENT_ORDER = ["databases", "site", "server", "email"]
 BACKUP_COMPONENT_LABELS = {
     "databases": "Veritabanı",
@@ -443,6 +444,10 @@ def _settings_defaults() -> dict[str, Any]:
             os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_ENABLED"),
             DEFAULT_NOTIFICATION_ENABLED,
         ),
+        "backup_notification_use_admin": _parse_bool(
+            os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_USE_ADMIN"),
+            DEFAULT_NOTIFICATION_USE_ADMIN,
+        ),
         "backup_notification_email": _sanitize_notification_email(
             os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_EMAIL"),
             DEFAULT_NOTIFICATION_EMAIL,
@@ -507,6 +512,10 @@ def load_ui_settings() -> dict[str, Any]:
             payload.get("backup_notification_enabled"),
             settings["backup_notification_enabled"],
         )
+        settings["backup_notification_use_admin"] = _parse_bool(
+            payload.get("backup_notification_use_admin"),
+            settings["backup_notification_use_admin"],
+        )
         settings["backup_notification_email"] = _sanitize_notification_email(
             payload.get("backup_notification_email"),
             settings["backup_notification_email"],
@@ -554,6 +563,7 @@ def save_ui_settings(settings: dict[str, Any]) -> dict[str, Any]:
             )
         if {
             "backup_notification_enabled",
+            "backup_notification_use_admin",
             "backup_notification_email",
             "backup_notification_on_success",
             "backup_notification_on_failure",
@@ -561,6 +571,7 @@ def save_ui_settings(settings: dict[str, Any]) -> dict[str, Any]:
             current.update(
                 validate_backup_notification_settings(
                     settings.get("backup_notification_enabled", current["backup_notification_enabled"]),
+                    settings.get("backup_notification_use_admin", current["backup_notification_use_admin"]),
                     settings.get("backup_notification_email", current["backup_notification_email"]),
                     settings.get("backup_notification_on_success", current["backup_notification_on_success"]),
                     settings.get("backup_notification_on_failure", current["backup_notification_on_failure"]),
@@ -640,8 +651,15 @@ def validate_backup_schedule_settings(
     }
 
 
-def validate_backup_notification_settings(enabled: Any, email: Any, on_success: Any, on_failure: Any) -> dict[str, Any]:
+def validate_backup_notification_settings(
+    enabled: Any,
+    use_admin: Any,
+    email: Any,
+    on_success: Any,
+    on_failure: Any,
+) -> dict[str, Any]:
     notification_enabled = _parse_bool(enabled, DEFAULT_NOTIFICATION_ENABLED)
+    notification_use_admin = _parse_bool(use_admin, DEFAULT_NOTIFICATION_USE_ADMIN)
     notification_email = _sanitize_notification_email(email, DEFAULT_NOTIFICATION_EMAIL)
     notify_on_success = _parse_bool(on_success, DEFAULT_NOTIFICATION_ON_SUCCESS)
     notify_on_failure = _parse_bool(on_failure, DEFAULT_NOTIFICATION_ON_FAILURE)
@@ -651,13 +669,14 @@ def validate_backup_notification_settings(enabled: Any, email: Any, on_success: 
         raise ServiceError("Bildirim e-posta adresi geçerli değil.")
     if notification_email and not EMAIL_RE.match(notification_email):
         raise ServiceError("Bildirim e-posta adresi geçerli değil.")
-    if notification_enabled and not notification_email:
-        raise ServiceError("E-posta bildirimi açıkken alıcı adresi zorunludur.")
+    if notification_enabled and not notification_use_admin and not notification_email:
+        raise ServiceError("CyberPanel admin adresi kullanılmıyorsa alıcı adresi zorunludur.")
     if notification_enabled and not (notify_on_success or notify_on_failure):
         raise ServiceError("E-posta bildirimi için en az bir tetik seçilmelidir.")
 
     return {
         "backup_notification_enabled": notification_enabled,
+        "backup_notification_use_admin": notification_use_admin,
         "backup_notification_email": notification_email,
         "backup_notification_on_success": notify_on_success,
         "backup_notification_on_failure": notify_on_failure,
@@ -697,7 +716,10 @@ def summarize_backup_notification_settings(settings: dict[str, Any]) -> str:
     if settings.get("backup_notification_on_failure"):
         event_labels.append("Hata")
     event_summary = " + ".join(event_labels) if event_labels else "Seçim yok"
-    recipient = str(settings.get("backup_notification_email", "")).strip() or "tanımsız"
+    if settings.get("backup_notification_use_admin"):
+        recipient = "CyberPanel admin e-postası"
+    else:
+        recipient = str(settings.get("backup_notification_email", "")).strip() or "tanımsız"
     return f"{recipient} | {event_summary}"
 
 
@@ -917,6 +939,7 @@ def start_backup_job(
             "components_label": summarize_backup_components(validated_components, compact=True),
             "profile_key": backup_profile_key(validated_components),
             "notify_enabled": bool(ui_settings.get("backup_notification_enabled")),
+            "notify_use_admin": bool(ui_settings.get("backup_notification_use_admin")),
             "notify_email": str(ui_settings.get("backup_notification_email", "")).strip(),
             "notify_on_success": bool(ui_settings.get("backup_notification_on_success")),
             "notify_on_failure": bool(ui_settings.get("backup_notification_on_failure")),
@@ -935,8 +958,8 @@ def update_backup_schedule(enabled: Any, hour: Any, minute: Any, mode: Any, comp
     return save_ui_settings(validated_schedule)
 
 
-def update_backup_notifications(enabled: Any, email: Any, on_success: Any, on_failure: Any) -> dict[str, Any]:
-    validated_notifications = validate_backup_notification_settings(enabled, email, on_success, on_failure)
+def update_backup_notifications(enabled: Any, use_admin: Any, email: Any, on_success: Any, on_failure: Any) -> dict[str, Any]:
+    validated_notifications = validate_backup_notification_settings(enabled, use_admin, email, on_success, on_failure)
     return save_ui_settings(validated_notifications)
 
 

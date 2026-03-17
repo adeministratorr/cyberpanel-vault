@@ -173,7 +173,7 @@ export CYBERPANEL_SERVER_BACKUP_UI_STATE_DIR=/var/lib/cyberpanel-backup-ui
 
 4. Ensure the web process can spawn background jobs and that `rclone` is available on the host.
 
-If you want email notifications after backup completion or failure, the host also needs a local `sendmail`-compatible MTA.
+If you want email notifications after backup completion or failure, configure CyberPanel `Server Mail` and make sure the admin account email is correct.
 
 ## Operational notes
 
