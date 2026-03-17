@@ -21,6 +21,7 @@ STATE_JOBS_DIR="${STATE_DIR}/jobs"
 SUDOERS_FILE="/etc/sudoers.d/cyberpanel-vault"
 WEB_USER="${WEB_USER:-cyberpanel}"
 URL_PATH="${URL_PATH:-server-backup/}"
+BACKUP_SUFFIX=".$(date +%Y%m%d%H%M%S).cyberpanel-vault.bak"
 
 log() {
     printf '[INFO] %s\n' "$1"
@@ -46,6 +47,14 @@ require_files() {
     [ -f "$BACKUP_SCRIPT_SOURCE" ] || fatal "Backup script bulunamadi: ${BACKUP_SCRIPT_SOURCE}"
     [ -f "$RESTORE_SCRIPT_SOURCE" ] || fatal "Restore script bulunamadi: ${RESTORE_SCRIPT_SOURCE}"
     [ -f "$RUNNER_SOURCE" ] || fatal "Root runner bulunamadi: ${RUNNER_SOURCE}"
+}
+
+backup_file() {
+    local source_file="$1"
+    local backup_file="${source_file}${BACKUP_SUFFIX}"
+
+    cp -a "$source_file" "$backup_file"
+    log "Yedek alindi: ${backup_file}"
 }
 
 copy_application() {
@@ -79,6 +88,7 @@ patch_settings() {
     fi
 
     log "settings.py guncelleniyor..."
+    backup_file "$SETTINGS_FILE"
     local tmp_file
     tmp_file="$(mktemp)"
 
@@ -126,6 +136,7 @@ patch_urls() {
         return
     fi
 
+    backup_file "$URLS_FILE"
     patch_urls_import
 
     log "urls.py guncelleniyor..."

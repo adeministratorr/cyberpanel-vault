@@ -68,6 +68,7 @@ Kolay yol, Git ile:
 mkdir -p /opt
 git clone https://github.com/adeministratorr/cyberpanel-vault.git /opt/cyberpanel-vault
 cd /opt/cyberpanel-vault
+git checkout v0.2.1
 ```
 
 Alternatif yol, `wget` ile:
@@ -75,9 +76,9 @@ Alternatif yol, `wget` ile:
 ```bash
 mkdir -p /opt
 cd /opt
-wget -O cyberpanel-vault-main.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/heads/main.zip
-unzip -o cyberpanel-vault-main.zip
-mv cyberpanel-vault-main cyberpanel-vault
+wget -O cyberpanel-vault-v0.2.1.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/tags/v0.2.1.zip
+unzip -o cyberpanel-vault-v0.2.1.zip
+mv cyberpanel-vault-0.2.1 cyberpanel-vault
 cd /opt/cyberpanel-vault
 ```
 
@@ -127,6 +128,12 @@ rclone lsd gdrive:
 ```
 
 Google Drive içindeki klasörleri görüyorsanız bağlantı hazır demektir.
+
+Varsayılan root yapılandırmasını kullanıyorsanız, `rclone` dosyasının izinlerini de sıkı tutun:
+
+```bash
+chmod 600 /root/.config/rclone/rclone.conf
+```
 
 7. İlk tam yedeği başlatın.
 
@@ -199,6 +206,7 @@ Sık kullanılan ortam değişkenleri:
 - `STATE_DIR`, varsayılan `/var/lib/cyberpanel-backup`
 - `LOG_FILE`, varsayılan `/var/log/cyberpanel_backup.log`
 - `ENCRYPTION_PASSWORD_FILE`, varsayılan `/root/.config/cyberpanel-backup/encryption.pass`
+- `ENCRYPTION_PASSWORD_COMMAND`, isterseniz şifreyi dosya yerine dış bir secret kaynağından çalışma anında çekmek için
 - `BACKUP_COMPONENTS`, varsayılan `all`; kullanılabilir değerler `databases,site,server,email`
 
 Farklı bileşen kombinasyonları ayrı zincirlerde tutulur. Sadece veritabanı için aldığınız artımlı yedek, site dosyalarının zincirini etkilemez.

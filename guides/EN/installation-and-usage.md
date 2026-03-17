@@ -35,6 +35,7 @@ Clone with Git:
 mkdir -p /opt
 git clone https://github.com/adeministratorr/cyberpanel-vault.git /opt/cyberpanel-vault
 cd /opt/cyberpanel-vault
+git checkout v0.2.1
 ```
 
 Download with `wget`:
@@ -42,9 +43,9 @@ Download with `wget`:
 ```bash
 mkdir -p /opt
 cd /opt
-wget -O cyberpanel-vault-main.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/heads/main.zip
-unzip -o cyberpanel-vault-main.zip
-mv cyberpanel-vault-main cyberpanel-vault
+wget -O cyberpanel-vault-v0.2.1.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/tags/v0.2.1.zip
+unzip -o cyberpanel-vault-v0.2.1.zip
+mv cyberpanel-vault-0.2.1 cyberpanel-vault
 cd /opt/cyberpanel-vault
 ```
 
@@ -72,6 +73,12 @@ chmod 600 /root/.config/cyberpanel-backup/encryption.pass
 ```
 
 5. Configure `rclone` for Google Drive. The default remote name expected by the scripts is `gdrive`.
+
+If you use the default root config path, keep the file readable only by root:
+
+```bash
+chmod 600 /root/.config/rclone/rclone.conf
+```
 
 6. Run the first full backup:
 
@@ -118,6 +125,7 @@ Important environment variables:
 - `STATE_DIR`, default `/var/lib/cyberpanel-backup`
 - `LOG_FILE`, default `/var/log/cyberpanel_backup.log`
 - `ENCRYPTION_PASSWORD_FILE`, default `/root/.config/cyberpanel-backup/encryption.pass`
+- `ENCRYPTION_PASSWORD_COMMAND`, optional command for fetching the secret from an external vault at runtime
 - `BACKUP_COMPONENTS`, default `all`; available values `databases,site,server,email`
 
 Different component combinations are kept in separate chains. A database-only incremental chain does not affect the incremental state of site backups.

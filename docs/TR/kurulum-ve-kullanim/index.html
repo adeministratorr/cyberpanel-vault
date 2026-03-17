@@ -84,15 +84,16 @@ apt install -y git wget unzip rclone openssl rsync</code></pre>
           <h2>Kolay yol: Git ile indirme</h2>
           <pre><code>mkdir -p /opt
 git clone https://github.com/adeministratorr/cyberpanel-vault.git /opt/cyberpanel-vault
-cd /opt/cyberpanel-vault</code></pre>
+cd /opt/cyberpanel-vault
+git checkout v0.2.1</code></pre>
         </section>
         <section class="mini">
           <h2>Alternatif yol: wget ile indirme</h2>
           <pre><code>mkdir -p /opt
 cd /opt
-wget -O cyberpanel-vault-main.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/heads/main.zip
-unzip -o cyberpanel-vault-main.zip
-mv cyberpanel-vault-main cyberpanel-vault
+wget -O cyberpanel-vault-v0.2.1.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/tags/v0.2.1.zip
+unzip -o cyberpanel-vault-v0.2.1.zip
+mv cyberpanel-vault-0.2.1 cyberpanel-vault
 cd /opt/cyberpanel-vault</code></pre>
         </section>
       </div>
@@ -120,6 +121,8 @@ chmod 600 /root/.config/cyberpanel-backup/encryption.pass</code></pre>
       <p>Ardından ekrandaki sorularda yeni bir remote oluşturun. Remote adını <code>gdrive</code> yazın. Depolama tipi olarak <code>drive</code> seçin. Google hesabınızla giriş yapıp yetki verin. İşlem bittiğinde bağlantıyı test edin:</p>
       <pre><code>rclone lsd gdrive:</code></pre>
       <p>Google Drive içindeki klasörleri görüyorsanız bağlantı hazır demektir.</p>
+      <p>Varsayılan root yapılandırmasını kullanıyorsanız, <code>rclone</code> dosyasının izinlerini de sıkı tutun:</p>
+      <pre><code>chmod 600 /root/.config/rclone/rclone.conf</code></pre>
 
       <h3>7. İlk tam yedeği başlatın</h3>
       <p>İlk çalıştırmada tam yedek almanız gerekir. Bu işlem sunucudaki veri miktarına göre uzun sürebilir.</p>
@@ -165,6 +168,7 @@ BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
         <li><code>STATE_DIR</code>, varsayılan <code>/var/lib/cyberpanel-backup</code></li>
         <li><code>LOG_FILE</code>, varsayılan <code>/var/log/cyberpanel_backup.log</code></li>
         <li><code>ENCRYPTION_PASSWORD_FILE</code>, varsayılan <code>/root/.config/cyberpanel-backup/encryption.pass</code></li>
+        <li><code>ENCRYPTION_PASSWORD_COMMAND</code>, isterseniz şifreyi dosya yerine dış bir secret kaynağından çalışma anında çekmek için</li>
         <li><code>BACKUP_COMPONENTS</code>, varsayılan <code>all</code>; kullanılabilir değerler <code>databases,site,server,email</code></li>
       </ul>
       <p>Farklı bileşen kombinasyonları ayrı zincirlerde tutulur. Yani sadece veritabanı için aldığınız artımlı yedek, site dosyalarının zincirini bozmaz.</p>

@@ -62,15 +62,16 @@
           <h2>Clone with Git</h2>
           <pre><code>mkdir -p /opt
 git clone https://github.com/adeministratorr/cyberpanel-vault.git /opt/cyberpanel-vault
-cd /opt/cyberpanel-vault</code></pre>
+cd /opt/cyberpanel-vault
+git checkout v0.2.1</code></pre>
         </section>
         <section class="mini">
           <h2>Download with wget</h2>
           <pre><code>mkdir -p /opt
 cd /opt
-wget -O cyberpanel-vault-main.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/heads/main.zip
-unzip -o cyberpanel-vault-main.zip
-mv cyberpanel-vault-main cyberpanel-vault
+wget -O cyberpanel-vault-v0.2.1.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/tags/v0.2.1.zip
+unzip -o cyberpanel-vault-v0.2.1.zip
+mv cyberpanel-vault-0.2.1 cyberpanel-vault
 cd /opt/cyberpanel-vault</code></pre>
         </section>
       </div>
@@ -90,6 +91,8 @@ chmod 600 /root/.config/cyberpanel-backup/encryption.pass</code></pre>
 
       <h3>5. Configure the Google Drive remote</h3>
       <p>Set up <code>rclone</code> for Google Drive. The scripts expect the remote name <code>gdrive</code> by default.</p>
+      <p>If you use the default root config path, keep the file readable only by root:</p>
+      <pre><code>chmod 600 /root/.config/rclone/rclone.conf</code></pre>
 
       <h3>6. Run the first full backup</h3>
       <pre><code>BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
@@ -120,6 +123,7 @@ BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
         <li><code>STATE_DIR</code>, default <code>/var/lib/cyberpanel-backup</code></li>
         <li><code>LOG_FILE</code>, default <code>/var/log/cyberpanel_backup.log</code></li>
         <li><code>ENCRYPTION_PASSWORD_FILE</code>, default <code>/root/.config/cyberpanel-backup/encryption.pass</code></li>
+        <li><code>ENCRYPTION_PASSWORD_COMMAND</code>, optional command for fetching the secret from an external vault at runtime</li>
         <li><code>BACKUP_COMPONENTS</code>, default <code>all</code>; available values <code>databases,site,server,email</code></li>
       </ul>
       <p>Different component combinations are kept in separate chains. A database-only incremental run does not affect the site backup chain.</p>

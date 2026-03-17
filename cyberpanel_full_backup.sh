@@ -24,6 +24,7 @@ LOG_FILE="${LOG_FILE:-/var/log/cyberpanel_backup.log}"
 RETENTION_DAYS="${RETENTION_DAYS:-7}"
 LOCK_FILE="${LOCK_FILE:-/var/lock/cyberpanel_full_backup.lock}"
 ENCRYPTION_PASSWORD_FILE="${ENCRYPTION_PASSWORD_FILE:-/root/.config/cyberpanel-backup/encryption.pass}"
+ENCRYPTION_PASSWORD_COMMAND="${ENCRYPTION_PASSWORD_COMMAND:-}"
 OPENSSL_CIPHER="${OPENSSL_CIPHER:-aes-256-cbc}"
 OPENSSL_PBKDF2_ITERATIONS="${OPENSSL_PBKDF2_ITERATIONS:-200000}"
 CONSISTENCY_MODE="${CONSISTENCY_MODE:-service-freeze}"
@@ -31,6 +32,10 @@ CONSISTENCY_STRICT="${CONSISTENCY_STRICT:-1}"
 QUIESCE_SERVICES="${QUIESCE_SERVICES:-lsws lscpd postfix dovecot crond cron pure-ftpd}"
 PRE_BACKUP_HOOK="${PRE_BACKUP_HOOK:-}"
 POST_BACKUP_HOOK="${POST_BACKUP_HOOK:-}"
+RCLONE_CONFIG_FILE="${RCLONE_CONFIG:-/root/.config/rclone/rclone.conf}"
+RCLONE_CONFIG_STRICT="${RCLONE_CONFIG_STRICT:-1}"
+DISK_SPACE_STRICT="${DISK_SPACE_STRICT:-1}"
+DISK_SPACE_BUFFER_MB="${DISK_SPACE_BUFFER_MB:-512}"
 
 RUN_TIMESTAMP="$(date +%Y%m%dT%H%M%S)"
 RUN_HUMAN_TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S %Z')"
@@ -58,6 +63,8 @@ MYSQL_DUMP_MODE_EFFECTIVE=""
 BACKUP_REASON=""
 BACKUP_COMPONENTS_NORMALIZED=""
 PROFILE_KEY="all"
+ENCRYPTION_PASSWORD_RESOLVED_FILE=""
+ENCRYPTION_PASSWORD_RUNTIME_FILE=""
 
 STATE_CURRENT_CHAIN_ID=""
 STATE_LAST_FULL_EPOCH=""
@@ -127,6 +134,10 @@ cleanup() {
         rm -f "${MYSQL_DEFAULTS_FILE}"
     fi
 
+    if [ -n "${ENCRYPTION_PASSWORD_RUNTIME_FILE}" ] && [ -f "${ENCRYPTION_PASSWORD_RUNTIME_FILE}" ]; then
+        rm -f "${ENCRYPTION_PASSWORD_RUNTIME_FILE}"
+    fi
+
     exit "$exit_code"
 }
 
@@ -173,6 +184,7 @@ validate_settings() {
     require_positive_integer "FULL_BACKUP_INTERVAL_DAYS" "$FULL_BACKUP_INTERVAL_DAYS"
     require_positive_integer "RETENTION_DAYS" "$RETENTION_DAYS"
     require_positive_integer "OPENSSL_PBKDF2_ITERATIONS" "$OPENSSL_PBKDF2_ITERATIONS"
+    require_positive_integer "DISK_SPACE_BUFFER_MB" "$DISK_SPACE_BUFFER_MB"
     case "$CONSISTENCY_MODE" in
         none|service-freeze)
             ;;
@@ -186,6 +198,22 @@ validate_settings() {
             ;;
         *)
             fatal "CONSISTENCY_STRICT 0 veya 1 olmalidir. Deger: ${CONSISTENCY_STRICT}"
+            ;;
+    esac
+
+    case "$RCLONE_CONFIG_STRICT" in
+        0|1)
+            ;;
+        *)
+            fatal "RCLONE_CONFIG_STRICT 0 veya 1 olmalidir. Deger: ${RCLONE_CONFIG_STRICT}"
+            ;;
+    esac
+
+    case "$DISK_SPACE_STRICT" in
+        0|1)
+            ;;
+        *)
+            fatal "DISK_SPACE_STRICT 0 veya 1 olmalidir. Deger: ${DISK_SPACE_STRICT}"
             ;;
     esac
 }
@@ -258,6 +286,68 @@ component_enabled() {
     return 1
 }
 
+file_mode_is_private_enough() {
+    local mode_octal="$1"
+    local mode_decimal
+
+    mode_decimal=$((8#${mode_octal}))
+    [ $((mode_decimal & 077)) -eq 0 ]
+}
+
+validate_private_file() {
+    local path="$1"
+    local label="$2"
+    local strict="$3"
+    local stat_output
+    local owner_uid
+    local file_mode
+
+    [ -r "$path" ] || fatal "${label} okunamiyor: ${path}"
+
+    stat_output="$(stat -c '%u %a' "$path" 2>/dev/null || true)"
+    if [ -z "$stat_output" ]; then
+        if [ "$strict" = "1" ]; then
+            fatal "${label} izinleri okunamadi: ${path}"
+        fi
+        warn "${label} izinleri dogrulanamadi: ${path}"
+        return 0
+    fi
+
+    owner_uid="${stat_output%% *}"
+    file_mode="${stat_output##* }"
+
+    if [ "$owner_uid" -ne 0 ]; then
+        if [ "$strict" = "1" ]; then
+            fatal "${label} root sahipliginde olmali: ${path}"
+        fi
+        warn "${label} root sahipliginde degil: ${path}"
+    fi
+
+    if ! file_mode_is_private_enough "$file_mode"; then
+        if [ "$strict" = "1" ]; then
+            fatal "${label} sadece root tarafindan okunabilir olmali (onerilen 600): ${path}"
+        fi
+        warn "${label} grup/dunya erisimine acik gorunuyor: ${path}"
+    fi
+}
+
+resolve_encryption_password_file() {
+    if [ -n "$ENCRYPTION_PASSWORD_COMMAND" ]; then
+        ENCRYPTION_PASSWORD_RUNTIME_FILE="$(mktemp "${BACKUP_DIR}/encryption-pass.XXXXXX")" || fatal "Gecici sifreleme dosyasi olusturulamadi."
+        chmod 600 "$ENCRYPTION_PASSWORD_RUNTIME_FILE" || fatal "Gecici sifreleme dosyasi izinleri ayarlanamadi."
+        if ! /bin/sh -c "$ENCRYPTION_PASSWORD_COMMAND" >"$ENCRYPTION_PASSWORD_RUNTIME_FILE"; then
+            fatal "ENCRYPTION_PASSWORD_COMMAND basarisiz oldu."
+        fi
+        if [ ! -s "$ENCRYPTION_PASSWORD_RUNTIME_FILE" ]; then
+            fatal "ENCRYPTION_PASSWORD_COMMAND bos sonuc dondurdu."
+        fi
+        ENCRYPTION_PASSWORD_RESOLVED_FILE="$ENCRYPTION_PASSWORD_RUNTIME_FILE"
+        return 0
+    fi
+
+    ENCRYPTION_PASSWORD_RESOLVED_FILE="$ENCRYPTION_PASSWORD_FILE"
+}
+
 acquire_lock() {
     mkdir -p "$(dirname "$LOCK_FILE")"
     exec 9>"$LOCK_FILE" || fatal "Kilit dosyasi olusturulamadi: ${LOCK_FILE}"
@@ -293,9 +383,120 @@ prepare_mysql_defaults() {
 }
 
 prepare_encryption() {
-    if [ ! -r "$ENCRYPTION_PASSWORD_FILE" ]; then
-        fatal "Sifreleme parola dosyasi okunamiyor: ${ENCRYPTION_PASSWORD_FILE}"
+    resolve_encryption_password_file
+    validate_private_file "$ENCRYPTION_PASSWORD_RESOLVED_FILE" "Sifreleme parola dosyasi" 1
+}
+
+validate_rclone_config() {
+    if [ ! -r "$RCLONE_CONFIG_FILE" ]; then
+        if [ "$RCLONE_CONFIG_STRICT" = "1" ]; then
+            fatal "rclone config dosyasi okunamiyor: ${RCLONE_CONFIG_FILE}"
+        fi
+        warn "rclone config dosyasi okunamiyor: ${RCLONE_CONFIG_FILE}"
+        return 1
     fi
+
+    validate_private_file "$RCLONE_CONFIG_FILE" "rclone config dosyasi" "$RCLONE_CONFIG_STRICT"
+}
+
+estimate_path_bytes() {
+    local path="$1"
+    local size_bytes
+
+    [ -e "/$path" ] || {
+        printf '0\n'
+        return 0
+    }
+
+    size_bytes="$(du -sb "/$path" 2>>"$LOG_FILE" | awk '{print $1}' || true)"
+    printf '%s\n' "${size_bytes:-0}"
+}
+
+estimate_database_bytes() {
+    local db_size
+
+    if ! component_enabled "databases"; then
+        printf '0\n'
+        return 0
+    fi
+
+    db_size="$(
+        mysql \
+            --defaults-extra-file="$MYSQL_DEFAULTS_FILE" \
+            --batch \
+            --skip-column-names \
+            -e "SELECT COALESCE(SUM(data_length + index_length), 0) FROM information_schema.tables;" \
+            2>>"$LOG_FILE"
+    )" || {
+        if [ "$DISK_SPACE_STRICT" = "1" ]; then
+            fatal "Disk alani hesaplamasi icin veritabani boyutu okunamadi."
+        fi
+        warn "Disk alani hesaplamasi icin veritabani boyutu okunamadi."
+        printf '0\n'
+        return 1
+    }
+
+    db_size="${db_size//[[:space:]]/}"
+    printf '%s\n' "${db_size:-0}"
+}
+
+check_disk_space() {
+    local file_bytes=0
+    local db_bytes=0
+    local required_bytes=0
+    local available_bytes=0
+    local buffer_bytes=$((DISK_SPACE_BUFFER_MB * 1024 * 1024))
+
+    if component_enabled "site"; then
+        file_bytes=$((file_bytes + $(estimate_path_bytes "home")))
+    fi
+    if component_enabled "server"; then
+        file_bytes=$((file_bytes + $(estimate_path_bytes "usr/local/CyberCP/CyberCP/settings.py")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "etc/cyberpanel")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "usr/local/lsws/conf")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "etc/powerdns")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "etc/letsencrypt")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "etc/postfix")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "etc/dovecot")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "etc/cron.d")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "etc/cron.daily")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "etc/cron.hourly")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "etc/cron.weekly")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "etc/cron.monthly")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "var/spool/cron")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "etc/systemd/system")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "etc/firewalld")))
+        file_bytes=$((file_bytes + $(estimate_path_bytes "etc/ufw")))
+    fi
+    if component_enabled "email"; then
+        file_bytes=$((file_bytes + $(estimate_path_bytes "var/vmail")))
+    fi
+
+    db_bytes="$(estimate_database_bytes)"
+    required_bytes=$(( (file_bytes * 2) + (db_bytes * 3) + buffer_bytes ))
+    available_bytes="$(df -PB1 "$BACKUP_DIR" 2>>"$LOG_FILE" | awk 'END {print $4}' || true)"
+    available_bytes="${available_bytes//[[:space:]]/}"
+
+    case "$available_bytes" in
+        ''|*[!0-9]*)
+            if [ "$DISK_SPACE_STRICT" = "1" ]; then
+                fatal "Bos disk alani hesaplanamadi: ${BACKUP_DIR}"
+            fi
+            warn "Bos disk alani hesaplanamadi: ${BACKUP_DIR}"
+            return 1
+            ;;
+    esac
+
+    log "Disk alani kontrolu: gerekli~${required_bytes} byte | bos=${available_bytes} byte"
+    if [ "$available_bytes" -lt "$required_bytes" ]; then
+        if [ "$DISK_SPACE_STRICT" = "1" ]; then
+            fatal "Yedekleme icin yeterli bos alan yok. Gerekli~${required_bytes} byte, bos=${available_bytes} byte"
+        fi
+        warn "Yedekleme icin bos alan sinirda. Gerekli~${required_bytes} byte, bos=${available_bytes} byte"
+        return 1
+    fi
+
+    return 0
 }
 
 load_state() {
@@ -677,7 +878,7 @@ encrypt_archive() {
         -iter "$OPENSSL_PBKDF2_ITERATIONS" \
         -in "$ARCHIVE_PATH" \
         -out "$UPLOAD_PATH" \
-        -pass "file:${ENCRYPTION_PASSWORD_FILE}" \
+        -pass "file:${ENCRYPTION_PASSWORD_RESOLVED_FILE}" \
         2>>"$LOG_FILE"; then
         rm -f "$ARCHIVE_PATH"
         log "Arsiv sifrelendi: $(basename "$UPLOAD_PATH")"
@@ -838,6 +1039,8 @@ main() {
     prepare_base_paths
     prepare_mysql_defaults
     prepare_encryption
+    validate_rclone_config
+    check_disk_space
     load_state
     determine_backup_mode
     initialize_backup_paths

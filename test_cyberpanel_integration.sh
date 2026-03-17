@@ -15,6 +15,8 @@ STATE_DIR="${STATE_DIR:-/var/lib/cyberpanel-backup-ui}"
 STATE_JOBS_DIR="${STATE_JOBS_DIR:-${STATE_DIR}/jobs}"
 SUDOERS_FILE="${SUDOERS_FILE:-/etc/sudoers.d/cyberpanel-vault}"
 RCLONE_REMOTE="${RCLONE_REMOTE:-gdrive}"
+RCLONE_CONFIG_FILE="${RCLONE_CONFIG:-/root/.config/rclone/rclone.conf}"
+ENCRYPTION_PASSWORD_FILE="${ENCRYPTION_PASSWORD_FILE:-/root/.config/cyberpanel-backup/encryption.pass}"
 WEB_USER="${WEB_USER:-}"
 PANEL_URL=""
 
@@ -266,6 +268,42 @@ check_rclone_remote() {
     fi
 }
 
+check_private_root_file() {
+    local path="$1"
+    local label="$2"
+    local stat_output
+    local owner_uid
+    local mode
+    local mode_decimal
+
+    if [ ! -f "$path" ]; then
+        fail "${label} bulunamadi: ${path}"
+        return
+    fi
+
+    stat_output="$(stat -c '%u %a' "$path" 2>/dev/null || true)"
+    if [ -z "$stat_output" ]; then
+        warn "${label} izinleri okunamadi: ${path}"
+        return
+    fi
+
+    owner_uid="${stat_output%% *}"
+    mode="${stat_output##* }"
+    mode_decimal=$((8#${mode}))
+
+    if [ "$owner_uid" -ne 0 ]; then
+        fail "${label} root sahipliginde degil: ${path}"
+        return
+    fi
+
+    if [ $((mode_decimal & 077)) -ne 0 ]; then
+        fail "${label} grup/dunya erisimine acik: ${path}"
+        return
+    fi
+
+    pass "${label} izinleri guvenli: ${path}"
+}
+
 check_python_syntax() {
     if python3 -m py_compile \
         "${APP_TARGET_DIR}/job_runner.py" \
@@ -345,6 +383,8 @@ main() {
     check_command sudo
     check_command visudo
     check_command rclone
+    check_private_root_file "$RCLONE_CONFIG_FILE" "rclone config dosyasi"
+    check_private_root_file "$ENCRYPTION_PASSWORD_FILE" "sifreleme parola dosyasi"
     check_file "$SETTINGS_FILE" "settings.py"
     check_file "$URLS_FILE" "urls.py"
     check_directory "$APP_TARGET_DIR" "serverBackupManager uygulama klasoru"

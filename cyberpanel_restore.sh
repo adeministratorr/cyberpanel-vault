@@ -17,9 +17,12 @@ RESTORE_WORKDIR="${RESTORE_WORKDIR:-/root/restore-workdir}"
 LOG_FILE="${LOG_FILE:-/var/log/cyberpanel_restore.log}"
 LOCK_FILE="${LOCK_FILE:-/var/lock/cyberpanel_restore.lock}"
 ENCRYPTION_PASSWORD_FILE="${ENCRYPTION_PASSWORD_FILE:-/root/.config/cyberpanel-backup/encryption.pass}"
+ENCRYPTION_PASSWORD_COMMAND="${ENCRYPTION_PASSWORD_COMMAND:-}"
 OPENSSL_CIPHER="${OPENSSL_CIPHER:-aes-256-cbc}"
 OPENSSL_PBKDF2_ITERATIONS="${OPENSSL_PBKDF2_ITERATIONS:-200000}"
 ALLOW_CROSS_HOST_RESTORE="${ALLOW_CROSS_HOST_RESTORE:-0}"
+RCLONE_CONFIG_FILE="${RCLONE_CONFIG:-/root/.config/rclone/rclone.conf}"
+RCLONE_CONFIG_STRICT="${RCLONE_CONFIG_STRICT:-1}"
 
 TARGET_FILE=""
 CONFIRM_HOST=""
@@ -42,6 +45,8 @@ TARGET_TIMESTAMP=""
 TARGET_TYPE=""
 TARGET_HOST_SLUG=""
 TARGET_PROFILE_KEY=""
+ENCRYPTION_PASSWORD_RESOLVED_FILE=""
+ENCRYPTION_PASSWORD_RUNTIME_FILE=""
 
 if [ -t 1 ]; then
     RED='\033[0;31m'
@@ -78,6 +83,14 @@ fatal() {
     log_line "ERROR" "$RED" "$1"
     exit 1
 }
+
+cleanup_runtime_secret() {
+    if [ -n "${ENCRYPTION_PASSWORD_RUNTIME_FILE}" ] && [ -f "${ENCRYPTION_PASSWORD_RUNTIME_FILE}" ]; then
+        rm -f "${ENCRYPTION_PASSWORD_RUNTIME_FILE}"
+    fi
+}
+
+trap cleanup_runtime_secret EXIT INT TERM
 
 usage() {
     cat <<'EOF'
@@ -163,6 +176,80 @@ require_commands() {
     done
 }
 
+file_mode_is_private_enough() {
+    local mode_octal="$1"
+    local mode_decimal
+
+    mode_decimal=$((8#${mode_octal}))
+    [ $((mode_decimal & 077)) -eq 0 ]
+}
+
+validate_private_file() {
+    local path="$1"
+    local label="$2"
+    local strict="$3"
+    local stat_output
+    local owner_uid
+    local file_mode
+
+    [ -r "$path" ] || fatal "${label} okunamiyor: ${path}"
+
+    stat_output="$(stat -c '%u %a' "$path" 2>/dev/null || true)"
+    if [ -z "$stat_output" ]; then
+        if [ "$strict" = "1" ]; then
+            fatal "${label} izinleri okunamadi: ${path}"
+        fi
+        warn "${label} izinleri dogrulanamadi: ${path}"
+        return 0
+    fi
+
+    owner_uid="${stat_output%% *}"
+    file_mode="${stat_output##* }"
+
+    if [ "$owner_uid" -ne 0 ]; then
+        if [ "$strict" = "1" ]; then
+            fatal "${label} root sahipliginde olmali: ${path}"
+        fi
+        warn "${label} root sahipliginde degil: ${path}"
+    fi
+
+    if ! file_mode_is_private_enough "$file_mode"; then
+        if [ "$strict" = "1" ]; then
+            fatal "${label} sadece root tarafindan okunabilir olmali (onerilen 600): ${path}"
+        fi
+        warn "${label} grup/dunya erisimine acik gorunuyor: ${path}"
+    fi
+}
+
+resolve_encryption_password_file() {
+    if [ -n "$ENCRYPTION_PASSWORD_COMMAND" ]; then
+        ENCRYPTION_PASSWORD_RUNTIME_FILE="$(mktemp "${RESTORE_WORKDIR}/restore-pass.XXXXXX")" || fatal "Gecici sifreleme dosyasi olusturulamadi."
+        chmod 600 "$ENCRYPTION_PASSWORD_RUNTIME_FILE" || fatal "Gecici sifreleme dosyasi izinleri ayarlanamadi."
+        if ! /bin/sh -c "$ENCRYPTION_PASSWORD_COMMAND" >"$ENCRYPTION_PASSWORD_RUNTIME_FILE"; then
+            fatal "ENCRYPTION_PASSWORD_COMMAND basarisiz oldu."
+        fi
+        if [ ! -s "$ENCRYPTION_PASSWORD_RUNTIME_FILE" ]; then
+            fatal "ENCRYPTION_PASSWORD_COMMAND bos sonuc dondurdu."
+        fi
+        ENCRYPTION_PASSWORD_RESOLVED_FILE="$ENCRYPTION_PASSWORD_RUNTIME_FILE"
+        return 0
+    fi
+
+    ENCRYPTION_PASSWORD_RESOLVED_FILE="$ENCRYPTION_PASSWORD_FILE"
+}
+
+validate_rclone_config() {
+    if [ ! -r "$RCLONE_CONFIG_FILE" ]; then
+        if [ "$RCLONE_CONFIG_STRICT" = "1" ]; then
+            fatal "rclone config dosyasi okunamiyor: ${RCLONE_CONFIG_FILE}"
+        fi
+        warn "rclone config dosyasi okunamiyor: ${RCLONE_CONFIG_FILE}"
+        return 1
+    fi
+
+    validate_private_file "$RCLONE_CONFIG_FILE" "rclone config dosyasi" "$RCLONE_CONFIG_STRICT"
+}
+
 acquire_lock() {
     mkdir -p "$(dirname "$LOCK_FILE")"
     exec 9>"$LOCK_FILE" || fatal "Kilit dosyasi olusturulamadi: ${LOCK_FILE}"
@@ -177,7 +264,9 @@ prepare_env() {
     touch "$LOG_FILE" || fatal "Log dosyasi yazilamiyor: ${LOG_FILE}"
 
     [ -r "$MYSQL_PASSWORD_FILE" ] || fatal "MySQL parola dosyasi okunamiyor: ${MYSQL_PASSWORD_FILE}"
-    [ -r "$ENCRYPTION_PASSWORD_FILE" ] || fatal "Sifreleme parola dosyasi okunamiyor: ${ENCRYPTION_PASSWORD_FILE}"
+    resolve_encryption_password_file
+    validate_private_file "$ENCRYPTION_PASSWORD_RESOLVED_FILE" "Sifreleme parola dosyasi" 1
+    validate_rclone_config
 
     WORKDIR="$(mktemp -d "${RESTORE_WORKDIR}/restore.${RUN_ID}.XXXXXX")" || fatal "Restore calisma dizini olusturulamadi."
     DOWNLOAD_DIR="${WORKDIR}/downloads"
@@ -310,7 +399,7 @@ decrypt_chain() {
             -iter "$OPENSSL_PBKDF2_ITERATIONS" \
             -in "$input_file" \
             -out "$output_file" \
-            -pass "file:${ENCRYPTION_PASSWORD_FILE}" \
+            -pass "file:${ENCRYPTION_PASSWORD_RESOLVED_FILE}" \
             2>>"$LOG_FILE" || fatal "Sifre cozme basarisiz: ${file}"
     done
 }
