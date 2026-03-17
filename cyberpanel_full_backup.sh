@@ -405,6 +405,7 @@ freeze_writes() {
     run_consistency_hook "pre-freeze" "$PRE_BACKUP_HOOK" || true
 
     STOPPED_SERVICES=()
+    CONSISTENCY_ACTIVE=1
     log "Yazan servisler gecici olarak durduruluyor..."
 
     for service_name in $QUIESCE_SERVICES; do
@@ -427,7 +428,6 @@ freeze_writes() {
         fi
     done
 
-    CONSISTENCY_ACTIVE=1
     log "Tutarlilik penceresi acildi. Veritabani ve dosyalar ayni ana sabitlenecek."
 }
 
