@@ -22,6 +22,8 @@ def main() -> int:
     if len(sys.argv) != 2:
         raise SystemExit("usage: job_runner.py <job_json_path>")
 
+    os.umask(0o077)
+
     job_path = Path(sys.argv[1])
     job = json.loads(job_path.read_text(encoding="utf-8"))
 
@@ -31,6 +33,9 @@ def main() -> int:
 
     log_path = Path(job["log_path"])
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.parent.chmod(0o700)
+    log_path.touch(mode=0o600, exist_ok=True)
+    log_path.chmod(0o600)
 
     job["status"] = "running"
     job["started_at"] = now_iso()

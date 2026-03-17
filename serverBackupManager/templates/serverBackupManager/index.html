@@ -466,19 +466,56 @@
                 const article = document.createElement("article");
                 article.className = "job";
                 article.dataset.status = job.status;
-                article.innerHTML = `
-                    <div class="row">
-                        <strong>${job.type.toUpperCase()}</strong>
-                        <span class="pill">${job.status}</span>
-                        <span class="meta">${job.created_at || ""}</span>
-                    </div>
-                    <div class="meta">ID: ${job.id}</div>
-                    ${job.meta && job.meta.target_file ? `<div class="meta">Hedef: ${job.meta.target_file}</div>` : ""}
-                    ${job.meta && job.meta.mode ? `<div class="meta">Mod: ${job.meta.mode}</div>` : ""}
-                    <div class="row">
-                        <button class="secondary log-button" type="button" data-job-id="${job.id}">Günlüğü Aç</button>
-                    </div>
-                `;
+
+                const header = document.createElement("div");
+                header.className = "row";
+
+                const title = document.createElement("strong");
+                title.textContent = (job.type || "").toUpperCase();
+                header.appendChild(title);
+
+                const status = document.createElement("span");
+                status.className = "pill";
+                status.textContent = job.status || "";
+                header.appendChild(status);
+
+                const createdAt = document.createElement("span");
+                createdAt.className = "meta";
+                createdAt.textContent = job.created_at || "";
+                header.appendChild(createdAt);
+
+                article.appendChild(header);
+
+                const idMeta = document.createElement("div");
+                idMeta.className = "meta";
+                idMeta.textContent = `ID: ${job.id || ""}`;
+                article.appendChild(idMeta);
+
+                if (job.meta && job.meta.target_file) {
+                    const targetMeta = document.createElement("div");
+                    targetMeta.className = "meta";
+                    targetMeta.textContent = `Hedef: ${job.meta.target_file}`;
+                    article.appendChild(targetMeta);
+                }
+
+                if (job.meta && job.meta.mode) {
+                    const modeMeta = document.createElement("div");
+                    modeMeta.className = "meta";
+                    modeMeta.textContent = `Mod: ${job.meta.mode}`;
+                    article.appendChild(modeMeta);
+                }
+
+                const actions = document.createElement("div");
+                actions.className = "row";
+
+                const button = document.createElement("button");
+                button.className = "secondary log-button";
+                button.type = "button";
+                button.dataset.jobId = job.id || "";
+                button.textContent = "Günlüğü Aç";
+                actions.appendChild(button);
+
+                article.appendChild(actions);
                 jobsContainer.appendChild(article);
             });
         }

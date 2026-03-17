@@ -21,9 +21,11 @@ DRIVE_FOLDER = os.environ.get("DRIVE_FOLDER", "cyberpanel-backups")
 HOST_FQDN = socket.getfqdn() or socket.gethostname()
 HOST_SLUG = re.sub(r"[^A-Za-z0-9._-]+", "_", HOST_FQDN)
 BACKUP_RE = re.compile(
-    r"^backup__host-(?P<host>.+?)__chain-(?P<chain>\d{8}T\d{6})__type-(?P<kind>full|incremental)__at-(?P<timestamp>\d{8}T\d{6})\.tar\.gz\.enc$"
+    r"^backup__host-(?P<host>[A-Za-z0-9._-]+)__chain-(?P<chain>\d{8}T\d{6})__type-(?P<kind>full|incremental)__at-(?P<timestamp>\d{8}T\d{6})\.tar\.gz\.enc$"
 )
+JOB_ID_RE = re.compile(r"^\d{8}T\d{6}-[0-9a-f]{8}$")
 ALLOWED_BACKUP_MODES = {"auto", "full", "incremental"}
+ACTIVE_JOB_STATUSES = {"queued", "running"}
 
 
 class ServiceError(RuntimeError):
@@ -35,10 +37,12 @@ def _now_iso() -> str:
 
 
 def _job_file(job_id: str) -> Path:
+    _validate_job_id(job_id)
     return JOBS_DIR / f"{job_id}.json"
 
 
 def _log_file(job_id: str) -> Path:
+    _validate_job_id(job_id)
     return JOBS_DIR / f"{job_id}.log"
 
 
@@ -46,11 +50,61 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     tmp_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    tmp_path.chmod(0o600)
     tmp_path.replace(path)
+    path.chmod(0o600)
 
 
 def ensure_runtime_dirs() -> None:
+    UI_STATE_DIR.mkdir(parents=True, exist_ok=True)
+    UI_STATE_DIR.chmod(0o700)
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    JOBS_DIR.chmod(0o700)
+
+
+def _validate_job_id(job_id: str) -> None:
+    if not JOB_ID_RE.match(job_id):
+        raise ServiceError("İş kimliği geçerli değil.")
+
+
+def _read_job_record(job_id: str) -> dict[str, Any]:
+    path = _job_file(job_id)
+    if not path.exists():
+        raise ServiceError("İş kaydı bulunamadı.")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _public_job_view(job: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": job.get("id", ""),
+        "type": job.get("type", ""),
+        "status": job.get("status", ""),
+        "created_at": job.get("created_at", ""),
+        "started_at": job.get("started_at", ""),
+        "finished_at": job.get("finished_at", ""),
+        "exit_code": job.get("exit_code"),
+        "meta": job.get("meta", {}),
+    }
+
+
+def _has_active_jobs() -> bool:
+    ensure_runtime_dirs()
+
+    for path in JOBS_DIR.glob("*.json"):
+        try:
+            job = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+
+        if job.get("status") in ACTIVE_JOB_STATUSES:
+            return True
+
+    return False
+
+
+def _ensure_no_active_jobs() -> None:
+    if _has_active_jobs():
+        raise ServiceError("Bekleyen ya da çalışan bir yedekleme işlemi var. Yeni iş başlatmadan önce mevcut işi tamamlayın.")
 
 
 def _spawn_job(job_path: Path) -> None:
@@ -96,6 +150,7 @@ def start_backup_job(mode: str) -> dict[str, Any]:
         raise ServiceError(f"Geçersiz yedekleme modu: {mode}")
 
     _validate_script(BACKUP_SCRIPT, "Backup")
+    _ensure_no_active_jobs()
     return create_job(
         job_type="backup",
         command=[str(BACKUP_SCRIPT)],
@@ -107,8 +162,11 @@ def start_backup_job(mode: str) -> dict[str, Any]:
 def start_restore_job(target_file: str, confirm_host: str, skip_db: bool, skip_files: bool, skip_configs: bool, skip_services: bool) -> dict[str, Any]:
     if not BACKUP_RE.match(target_file):
         raise ServiceError("Hedef yedek dosyası geçerli değil.")
+    if confirm_host != HOST_FQDN:
+        raise ServiceError(f"Onay için mevcut sunucunun FQDN değeri yazılmalıdır: {HOST_FQDN}")
 
     _validate_script(RESTORE_SCRIPT, "Restore")
+    _ensure_no_active_jobs()
 
     command = [
         str(RESTORE_SCRIPT),
@@ -147,7 +205,7 @@ def list_jobs(limit: int = 20) -> list[dict[str, Any]]:
 
     for path in sorted(JOBS_DIR.glob("*.json"), reverse=True):
         try:
-            jobs.append(json.loads(path.read_text(encoding="utf-8")))
+            jobs.append(_public_job_view(json.loads(path.read_text(encoding="utf-8"))))
         except (OSError, json.JSONDecodeError):
             continue
 
@@ -156,10 +214,7 @@ def list_jobs(limit: int = 20) -> list[dict[str, Any]]:
 
 
 def get_job(job_id: str) -> dict[str, Any]:
-    path = _job_file(job_id)
-    if not path.exists():
-        raise ServiceError("İş kaydı bulunamadı.")
-    return json.loads(path.read_text(encoding="utf-8"))
+    return _public_job_view(_read_job_record(job_id))
 
 
 def read_job_log(job_id: str, max_chars: int = 20000) -> str:

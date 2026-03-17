@@ -15,6 +15,7 @@ DRIVE_FOLDER="${DRIVE_FOLDER:-cyberpanel-backups}"
 MYSQL_PASSWORD_FILE="${MYSQL_PASSWORD_FILE:-/etc/cyberpanel/mysqlPassword}"
 RESTORE_WORKDIR="${RESTORE_WORKDIR:-/root/restore-workdir}"
 LOG_FILE="${LOG_FILE:-/var/log/cyberpanel_restore.log}"
+LOCK_FILE="${LOCK_FILE:-/var/lock/cyberpanel_restore.lock}"
 ENCRYPTION_PASSWORD_FILE="${ENCRYPTION_PASSWORD_FILE:-/root/.config/cyberpanel-backup/encryption.pass}"
 OPENSSL_CIPHER="${OPENSSL_CIPHER:-aes-256-cbc}"
 OPENSSL_PBKDF2_ITERATIONS="${OPENSSL_PBKDF2_ITERATIONS:-200000}"
@@ -154,11 +155,20 @@ require_root() {
 require_commands() {
     local cmd
 
-    for cmd in gunzip mktemp mysql openssl rclone rsync sha256sum tar; do
+    for cmd in flock gunzip mktemp mysql openssl rclone rsync sha256sum tar; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             fatal "Gerekli komut bulunamadi: ${cmd}"
         fi
     done
+}
+
+acquire_lock() {
+    mkdir -p "$(dirname "$LOCK_FILE")"
+    exec 9>"$LOCK_FILE" || fatal "Kilit dosyasi olusturulamadi: ${LOCK_FILE}"
+
+    if ! flock -n 9; then
+        fatal "Baska bir restore islemi zaten calisiyor."
+    fi
 }
 
 prepare_env() {
@@ -430,6 +440,7 @@ main() {
     parse_args "$@"
     require_root
     require_commands
+    acquire_lock
     prepare_env
     parse_target_file
     check_confirmation
