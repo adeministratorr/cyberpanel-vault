@@ -68,6 +68,16 @@ pre {
   word-break: break-word;
 }
 
+pre code {
+  display: block;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  overflow-wrap: inherit;
+}
+
 .landing-page .shell {
   width: min(1140px, calc(100vw - 24px));
   margin: 0 auto;
