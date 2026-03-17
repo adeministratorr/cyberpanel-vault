@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -16,6 +17,10 @@ JOBS_DIR = UI_STATE_DIR / "jobs"
 BACKUP_SCRIPT = Path(os.environ.get("CYBERPANEL_SERVER_BACKUP_SCRIPT", "/usr/local/bin/cyberpanel_full_backup.sh"))
 RESTORE_SCRIPT = Path(os.environ.get("CYBERPANEL_SERVER_RESTORE_SCRIPT", "/usr/local/bin/cyberpanel_restore.sh"))
 JOB_RUNNER = BASE_DIR / "job_runner.py"
+PRIVILEGED_JOB_RUNNER = Path(
+    os.environ.get("CYBERPANEL_SERVER_BACKUP_PRIVILEGED_RUNNER", "/usr/local/bin/cyberpanel-vault-job-runner")
+)
+RUNNER_MODE = os.environ.get("CYBERPANEL_SERVER_BACKUP_RUNNER_MODE", "auto")
 RCLONE_REMOTE = os.environ.get("RCLONE_REMOTE", "gdrive")
 DRIVE_FOLDER = os.environ.get("DRIVE_FOLDER", "cyberpanel-backups")
 HOST_FQDN = socket.getfqdn() or socket.gethostname()
@@ -26,6 +31,7 @@ BACKUP_RE = re.compile(
 JOB_ID_RE = re.compile(r"^\d{8}T\d{6}-[0-9a-f]{8}$")
 ALLOWED_BACKUP_MODES = {"auto", "full", "incremental"}
 ACTIVE_JOB_STATUSES = {"queued", "running"}
+ALLOWED_RUNNER_MODES = {"auto", "direct", "sudo"}
 
 
 class ServiceError(RuntimeError):
@@ -109,13 +115,63 @@ def _ensure_no_active_jobs() -> None:
 
 def _spawn_job(job_path: Path) -> None:
     subprocess.Popen(
-        [sys.executable, str(JOB_RUNNER), str(job_path)],
+        _resolve_runner_command(job_path),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL,
         start_new_session=True,
         cwd=str(BASE_DIR),
     )
+
+
+def _resolve_runner_command(job_path: Path) -> list[str]:
+    direct_command = [sys.executable, str(JOB_RUNNER), str(job_path)]
+
+    if RUNNER_MODE not in ALLOWED_RUNNER_MODES:
+        raise ServiceError(
+            f"Geçersiz runner modu: {RUNNER_MODE}. Desteklenen değerler: auto, direct, sudo."
+        )
+
+    if RUNNER_MODE == "direct":
+        return direct_command
+
+    if RUNNER_MODE == "auto" and os.geteuid() == 0:
+        return direct_command
+
+    return _resolve_sudo_runner_command(job_path)
+
+
+def _resolve_sudo_runner_command(job_path: Path) -> list[str]:
+    if not PRIVILEGED_JOB_RUNNER.exists():
+        raise ServiceError(
+            "Root gerektiren işleri başlatmak için ayrı runner bulunamadı. "
+            f"Beklenen yol: {PRIVILEGED_JOB_RUNNER}"
+        )
+    if not os.access(PRIVILEGED_JOB_RUNNER, os.X_OK):
+        raise ServiceError(f"Ayrı runner çalıştırılabilir değil: {PRIVILEGED_JOB_RUNNER}")
+
+    if not shutil.which("sudo"):
+        raise ServiceError("sudo bulunamadı. Root runner başlatılamıyor.")
+
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", str(PRIVILEGED_JOB_RUNNER), "--check"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ServiceError("Root runner kontrolü zaman aşımına uğradı.") from exc
+
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise ServiceError(
+            "Root runner kullanılamıyor. CyberPanel entegrasyon installer'ını çalıştırın "
+            "ve sudoers ayarını doğrulayın."
+            + (f" Ayrıntı: {detail}" if detail else "")
+        )
+
+    return ["sudo", "-n", str(PRIVILEGED_JOB_RUNNER), str(job_path)]
 
 
 def create_job(job_type: str, command: list[str], env: dict[str, str] | None = None, meta: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -191,6 +247,7 @@ def start_restore_job(target_file: str, confirm_host: str, skip_db: bool, skip_f
         command=command,
         meta={
             "target_file": target_file,
+            "confirm_host": confirm_host,
             "skip_db": skip_db,
             "skip_files": skip_files,
             "skip_configs": skip_configs,
@@ -298,4 +355,6 @@ def dashboard_context() -> dict[str, Any]:
         "host_slug": HOST_SLUG,
         "backup_script": str(BACKUP_SCRIPT),
         "restore_script": str(RESTORE_SCRIPT),
+        "runner_mode": RUNNER_MODE,
+        "privileged_runner": str(PRIVILEGED_JOB_RUNNER),
     }

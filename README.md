@@ -158,7 +158,22 @@ Optional restore flags:
 
 The [`serverBackupManager/`](/Users/ademyuce/Documents/CyberPanel/serverBackupManager) directory is a Django app/plugin skeleton for CyberPanel-style integration.
 
-Minimum integration points:
+Fastest installation path on a CyberPanel host:
+
+```bash
+cd /opt/cyberpanel-vault
+bash install_cyberpanel_integration.sh
+```
+
+If your CyberPanel web process does not run as the default `cyberpanel` user, pass the user explicitly:
+
+```bash
+WEB_USER=YOUR_WEB_USER bash install_cyberpanel_integration.sh
+```
+
+The installer copies the Django app into the CyberPanel codebase, installs the shell scripts, writes a restricted root runner, patches `settings.py` and `urls.py`, and creates a `sudoers` rule so the panel can launch root-only backup jobs safely.
+
+Manual integration points:
 
 1. Place `serverBackupManager/` inside the target CyberPanel Python/Django codebase.
 2. Mount [`urls.py`](/Users/ademyuce/Documents/CyberPanel/serverBackupManager/urls.py) into the panel routing.

@@ -238,6 +238,23 @@ Server Backup Manager kurulduğunda yedekleme ve geri yükleme işlemlerini term
 - Bu bölüm, CyberPanel'in Django yapısına dosya eklemeyi gerektirir. Yani sadece kopyala ve çalıştır mantığında değildir.
 - Bu ekranı kullanacak kişinin panelde yönetici yetkisi olmalıdır.
 
+### En kolay kurulum
+
+CyberPanel sunucusunda bu repo `/opt/cyberpanel-vault` altında duruyorsa, çoğu sistemde en kısa yol aşağıdaki installer'ı çalıştırmaktır:
+
+```bash
+cd /opt/cyberpanel-vault
+bash install_cyberpanel_integration.sh
+```
+
+CyberPanel web süreci farklı bir kullanıcıyla çalışıyorsa kullanıcıyı açıkça verin:
+
+```bash
+WEB_USER=WEB_SURECI_KULLANICISI bash install_cyberpanel_integration.sh
+```
+
+Installer; Django uygulamasını kopyalar, betikleri kurar, root runner'ı yazar, `settings.py` ile `urls.py` dosyalarını günceller ve gerekli `sudoers` kuralını ekler.
+
 ### 1. Uygulama klasörünü CyberPanel kod tabanına kopyalayın
 
 Önce bu repo içindeki `serverBackupManager/` klasörünü, CyberPanel'in Django uygulamalarının bulunduğu yere kopyalayın. Hedef klasör sizin sunucunuzdaki CyberPanel kurulumuna göre değişebilir. Mantık şudur: Bu klasör, diğer Django app'lerin durduğu yerde olmalıdır.
@@ -246,7 +263,7 @@ Server Backup Manager kurulduğunda yedekleme ve geri yükleme işlemlerini term
 cp -a /opt/cyberpanel-vault/serverBackupManager /CYBERPANEL_DJANGO_KLASORU/serverBackupManager
 ```
 
-`/CYBERPANEL_DJANGO_KLASORU` kısmını kendi sunucunuzdaki gerçek klasörle değiştirin.
+`/CYBERPANEL_DJANGO_KLASORU` kısmını kendi sunucunuzdaki gerçek klasörle değiştirin. Installer kullanıyorsanız bu adımı elle yapmanız gerekmez.
 
 ### 2. Uygulamayı Django ayarlarına ekleyin
 
