@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8">
+    <title>Server Backup Manager</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --bg: #f4f1e8;
+            --panel: #fffaf0;
+            --ink: #1d2a32;
+            --muted: #5d6a72;
+            --accent: #0f766e;
+            --accent-2: #c2410c;
+            --danger: #b91c1c;
+            --line: #d8d1c2;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 28%),
+                radial-gradient(circle at top right, rgba(194, 65, 12, 0.14), transparent 32%),
+                var(--bg);
+            color: var(--ink);
+        }
+
+        .shell {
+            max-width: 1320px;
+            margin: 0 auto;
+            padding: 28px;
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            padding: 22px;
+            box-shadow: 0 10px 30px rgba(18, 35, 42, 0.08);
+        }
+
+        h1, h2, h3 {
+            margin-top: 0;
+        }
+
+        .meta {
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        .stack {
+            display: grid;
+            gap: 16px;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(15, 118, 110, 0.08);
+            color: var(--accent);
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .warning {
+            border-left: 4px solid var(--accent-2);
+            padding: 12px 14px;
+            background: rgba(194, 65, 12, 0.08);
+            color: #7c2d12;
+            border-radius: 12px;
+        }
+
+        .danger {
+            border-left: 4px solid var(--danger);
+            padding: 12px 14px;
+            background: rgba(185, 28, 28, 0.08);
+            color: #7f1d1d;
+            border-radius: 12px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        input[type="text"], select {
+            width: 100%;
+            border: 1px solid var(--line);
+            background: #fff;
+            color: var(--ink);
+            border-radius: 12px;
+            padding: 11px 13px;
+            font-size: 14px;
+        }
+
+        .checklist {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .check {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            background: #fff;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            font-size: 14px;
+        }
+
+        button {
+            border: 0;
+            border-radius: 12px;
+            padding: 11px 16px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .primary {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .secondary {
+            background: #fff;
+            color: var(--ink);
+            border: 1px solid var(--line);
+        }
+
+        .danger-btn {
+            background: var(--danger);
+            color: #fff;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 12px 10px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: top;
+            font-size: 14px;
+        }
+
+        th {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--muted);
+        }
+
+        .logbox {
+            min-height: 280px;
+            max-height: 520px;
+            overflow: auto;
+            background: #0b1220;
+            color: #d7e2f1;
+            border-radius: 16px;
+            padding: 16px;
+            white-space: pre-wrap;
+            font: 12px/1.55 "SFMono-Regular", Consolas, monospace;
+        }
+
+        .job {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 14px;
+            background: #fff;
+        }
+
+        .job[data-status="failed"] {
+            border-color: rgba(185, 28, 28, 0.35);
+        }
+
+        .job[data-status="running"] {
+            border-color: rgba(15, 118, 110, 0.35);
+        }
+
+        .messages {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .message {
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: #fff;
+        }
+
+        @media (max-width: 980px) {
+            .hero,
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .checklist {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        {% if messages %}
+            <div class="messages">
+                {% for message in messages %}
+                    <div class="message">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <section class="hero">
+            <div class="panel stack">
+                <div class="row">
+                    <span class="pill">Host: {{ host_fqdn }}</span>
+                    <span class="pill">Remote: {{ host_slug }} @ {{ backup_script }}</span>
+                </div>
+                <div>
+                    <h1>Server Backup Manager</h1>
+                    <p class="meta">
+                        CyberPanel paneline baglanacak sekilde tasarlanmis host-level backup/restore arayuzu.
+                        Site yedekleri icin Backup V2 kullanilirken, bu ekran sunucu genelindeki backup zincirini
+                        ve geri yukleme operasyonlarini yonetmek icin kullanilir.
+                    </p>
+                </div>
+                <div class="warning">
+                    Restore islemi yikicidir. Secilen backup zinciri hedef backup noktasina kadar uygulanir ve canli
+                    sistem uzerine yazilir.
+                </div>
+                {% if remote_error %}
+                    <div class="danger">{{ remote_error }}</div>
+                {% endif %}
+            </div>
+
+            <div class="panel stack">
+                <h2>Backup Baslat</h2>
+                <form method="post" action="{% url 'serverBackupManager:run_backup' %}" class="stack">
+                    {% csrf_token %}
+                    <div>
+                        <label for="mode">Backup modu</label>
+                        <select id="mode" name="mode">
+                            <option value="auto">Auto (haftalik full, diger kosular incremental)</option>
+                            <option value="full">Full</option>
+                            <option value="incremental">Incremental</option>
+                        </select>
+                    </div>
+                    <button class="primary" type="submit">Backup Job Baslat</button>
+                </form>
+
+                <div class="meta">
+                    Restore script yolu: {{ restore_script }}
+                </div>
+            </div>
+        </section>
+
+        <section class="grid">
+            <div class="panel stack">
+                <h2>Remote Backup Zincirleri</h2>
+                <div class="meta">Sadece bu host slug ile eslesen backup zincirleri listelenir.</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Zincir</th>
+                            <th>Adet</th>
+                            <th>Son Backup</th>
+                            <th>Hedef</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for chain in backups %}
+                            <tr>
+                                <td>
+                                    <strong>{{ chain.chain_id }}</strong><br>
+                                    <span class="meta">Ilk: {{ chain.full_timestamp }}</span>
+                                </td>
+                                <td>{{ chain.backup_count }}</td>
+                                <td>{{ chain.latest_timestamp }}</td>
+                                <td>
+                                    <select class="target-file-select">
+                                        {% for backup in chain.backups %}
+                                            <option value="{{ backup.file }}">
+                                                {{ backup.kind|upper }} @ {{ backup.timestamp }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4">Backup bulunamadi.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="panel stack">
+                <h2>Restore Baslat</h2>
+                <form method="post" action="{% url 'serverBackupManager:run_restore' %}" class="stack" id="restore-form">
+                    {% csrf_token %}
+                    <div>
+                        <label for="target_file">Hedef backup</label>
+                        <input id="target_file" name="target_file" type="text" placeholder="backup__host-...tar.gz.enc">
+                    </div>
+                    <div>
+                        <label for="confirm_host">Onay icin host FQDN girin</label>
+                        <input id="confirm_host" name="confirm_host" type="text" placeholder="{{ host_fqdn }}">
+                    </div>
+                    <div class="checklist">
+                        <label class="check"><input type="checkbox" name="skip_db"> Veritabanini atla</label>
+                        <label class="check"><input type="checkbox" name="skip_files"> Dosyalari atla</label>
+                        <label class="check"><input type="checkbox" name="skip_configs"> Config restore atla</label>
+                        <label class="check"><input type="checkbox" name="skip_services"> Servis restart atla</label>
+                    </div>
+                    <div class="danger">
+                        Bu islem secilen zincirin ilgili noktasini canli sisteme uygular. Geri alma mekanizmasi yoktur.
+                    </div>
+                    <button class="danger-btn" type="submit">Restore Job Baslat</button>
+                </form>
+            </div>
+        </section>
+
+        <section class="grid" style="margin-top: 24px;">
+            <div class="panel stack">
+                <div class="row">
+                    <h2 style="margin-bottom: 0;">Son Joblar</h2>
+                    <button class="secondary" type="button" id="refresh-jobs">Yenile</button>
+                </div>
+                <div id="jobs">
+                    {% for job in jobs %}
+                        <article class="job" data-status="{{ job.status }}">
+                            <div class="row">
+                                <strong>{{ job.type|upper }}</strong>
+                                <span class="pill">{{ job.status }}</span>
+                                <span class="meta">{{ job.created_at }}</span>
+                            </div>
+                            <div class="meta">ID: {{ job.id }}</div>
+                            {% if job.meta.target_file %}
+                                <div class="meta">Target: {{ job.meta.target_file }}</div>
+                            {% endif %}
+                            {% if job.meta.mode %}
+                                <div class="meta">Mode: {{ job.meta.mode }}</div>
+                            {% endif %}
+                            <div class="row">
+                                <button class="secondary log-button" type="button" data-job-id="{{ job.id }}">Log Goster</button>
+                            </div>
+                        </article>
+                    {% empty %}
+                        <div class="meta">Job bulunamadi.</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="panel stack">
+                <h2>Job Log</h2>
+                <div class="meta" id="log-meta">Bir job secin.</div>
+                <pre class="logbox" id="job-log">Log bekleniyor...</pre>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const logBaseUrl = "{% url 'serverBackupManager:index' %}api/jobs/";
+        const jobsContainer = document.getElementById("jobs");
+        const logBox = document.getElementById("job-log");
+        const logMeta = document.getElementById("log-meta");
+        const targetInput = document.getElementById("target_file");
+
+        document.querySelectorAll(".target-file-select").forEach((select) => {
+            select.addEventListener("change", () => {
+                targetInput.value = select.value;
+            });
+            if (!targetInput.value) {
+                targetInput.value = select.value;
+            }
+        });
+
+        async function loadJobs() {
+            const response = await fetch("{% url 'serverBackupManager:jobs_api' %}", {headers: {"Accept": "application/json"}});
+            if (!response.ok) {
+                return;
+            }
+            const payload = await response.json();
+            jobsContainer.innerHTML = "";
+            payload.jobs.forEach((job) => {
+                const article = document.createElement("article");
+                article.className = "job";
+                article.dataset.status = job.status;
+                article.innerHTML = `
+                    <div class="row">
+                        <strong>${job.type.toUpperCase()}</strong>
+                        <span class="pill">${job.status}</span>
+                        <span class="meta">${job.created_at || ""}</span>
+                    </div>
+                    <div class="meta">ID: ${job.id}</div>
+                    ${job.meta && job.meta.target_file ? `<div class="meta">Target: ${job.meta.target_file}</div>` : ""}
+                    ${job.meta && job.meta.mode ? `<div class="meta">Mode: ${job.meta.mode}</div>` : ""}
+                    <div class="row">
+                        <button class="secondary log-button" type="button" data-job-id="${job.id}">Log Goster</button>
+                    </div>
+                `;
+                jobsContainer.appendChild(article);
+            });
+        }
+
+        async function loadLog(jobId) {
+            const response = await fetch(`${logBaseUrl}${jobId}/log/`, {headers: {"Accept": "application/json"}});
+            if (!response.ok) {
+                logMeta.textContent = "Log okunamadi.";
+                logBox.textContent = "";
+                return;
+            }
+            const payload = await response.json();
+            logMeta.textContent = `${payload.job.type.toUpperCase()} | ${payload.job.status} | ${payload.job.id}`;
+            logBox.textContent = payload.log || "Log yok.";
+        }
+
+        jobsContainer.addEventListener("click", (event) => {
+            const button = event.target.closest(".log-button");
+            if (!button) {
+                return;
+            }
+            loadLog(button.dataset.jobId);
+        });
+
+        document.getElementById("refresh-jobs").addEventListener("click", () => {
+            loadJobs();
+        });
+
+        setInterval(loadJobs, 10000);
+    </script>
+</body>
+</html>

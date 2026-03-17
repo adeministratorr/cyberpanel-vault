@@ -1,0 +1,20 @@
+.DS_Store
+*.log
+*.tmp
+*.swp
+*.swo
+*.pyc
+__pycache__/
+.pytest_cache/
+
+# Local backup and restore artifacts
+*.staging
+*.snar
+*.tar.gz
+*.tar.gz.enc
+*.tar.gz.enc.sha256
+
+# Runtime state
+.env
+.venv/
+venv/
