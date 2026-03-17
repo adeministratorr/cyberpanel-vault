@@ -8,6 +8,7 @@ app_name = "serverBackupManager"
 urlpatterns = [
     path("", views.index, name="index"),
     path("api/run-backup/", views.run_backup, name="run_backup"),
+    path("api/save-schedule/", views.save_schedule, name="save_schedule"),
     path("api/run-restore/", views.run_restore, name="run_restore"),
     path("api/dashboard/", views.dashboard_api, name="dashboard_api"),
     path("api/jobs/", views.jobs_api, name="jobs_api"),

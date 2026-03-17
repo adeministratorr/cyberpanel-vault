@@ -156,6 +156,12 @@
             gap: 10px;
         }
 
+        .time-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
         .check {
             display: flex;
             align-items: center;
@@ -429,6 +435,55 @@
                     <button class="primary" type="submit">Yedeklemeyi Başlat</button>
                 </form>
 
+                <div class="summary-card">
+                    <h3>Otomatik Zamanlama</h3>
+                    <div class="summary-note" id="schedule-summary-note">{{ backup_schedule_summary }}</div>
+                </div>
+                <form method="post" action="{% url 'serverBackupManager:save_schedule' %}" class="stack">
+                    {% csrf_token %}
+                    <label class="check">
+                        <input type="checkbox" name="schedule_enabled" {% if backup_settings.backup_schedule_enabled %}checked{% endif %}>
+                        Otomatik yedeklemeyi aç
+                    </label>
+                    <div class="time-grid">
+                        <div>
+                            <label for="schedule_hour">Saat</label>
+                            <input
+                                id="schedule_hour"
+                                name="schedule_hour"
+                                type="number"
+                                min="0"
+                                max="23"
+                                step="1"
+                                value="{{ backup_settings.backup_schedule_hour }}"
+                            >
+                        </div>
+                        <div>
+                            <label for="schedule_minute">Dakika</label>
+                            <input
+                                id="schedule_minute"
+                                name="schedule_minute"
+                                type="number"
+                                min="0"
+                                max="59"
+                                step="1"
+                                value="{{ backup_settings.backup_schedule_minute }}"
+                            >
+                        </div>
+                    </div>
+                    <div class="checklist">
+                        <label class="check"><input type="checkbox" name="schedule_weekdays" value="mon" {% if "mon" in backup_settings.backup_schedule_weekdays %}checked{% endif %}> Pazartesi</label>
+                        <label class="check"><input type="checkbox" name="schedule_weekdays" value="tue" {% if "tue" in backup_settings.backup_schedule_weekdays %}checked{% endif %}> Salı</label>
+                        <label class="check"><input type="checkbox" name="schedule_weekdays" value="wed" {% if "wed" in backup_settings.backup_schedule_weekdays %}checked{% endif %}> Çarşamba</label>
+                        <label class="check"><input type="checkbox" name="schedule_weekdays" value="thu" {% if "thu" in backup_settings.backup_schedule_weekdays %}checked{% endif %}> Perşembe</label>
+                        <label class="check"><input type="checkbox" name="schedule_weekdays" value="fri" {% if "fri" in backup_settings.backup_schedule_weekdays %}checked{% endif %}> Cuma</label>
+                        <label class="check"><input type="checkbox" name="schedule_weekdays" value="sat" {% if "sat" in backup_settings.backup_schedule_weekdays %}checked{% endif %}> Cumartesi</label>
+                        <label class="check"><input type="checkbox" name="schedule_weekdays" value="sun" {% if "sun" in backup_settings.backup_schedule_weekdays %}checked{% endif %}> Pazar</label>
+                    </div>
+                    <div class="meta">Sunucunun yerel saat dilimi esas alınır. Varsayılan çalışma modu otomatik zincir mantığıdır.</div>
+                    <button class="secondary" type="submit">Zamanlamayı Kaydet</button>
+                </form>
+
                 <div class="meta">
                     Geri yükleme betiği: {{ restore_script }}
                 </div>
@@ -624,6 +679,7 @@
         const logMeta = document.getElementById("log-meta");
         const targetInput = document.getElementById("target_file");
         const backupTimeoutInput = document.getElementById("timeout_minutes");
+        const scheduleSummaryNote = document.getElementById("schedule-summary-note");
         const backupsBody = document.getElementById("backups-body");
         const downloadLogButton = document.getElementById("download-log");
         let selectedJobId = "";
@@ -690,6 +746,10 @@
 
             if (payload.backup_settings && backupTimeoutInput && document.activeElement !== backupTimeoutInput) {
                 backupTimeoutInput.value = payload.backup_settings.backup_timeout_minutes ?? backupTimeoutInput.value;
+            }
+
+            if (payload.backup_schedule_summary && scheduleSummaryNote) {
+                scheduleSummaryNote.textContent = payload.backup_schedule_summary;
             }
         }
 

@@ -36,6 +36,20 @@ ALLOWED_RUNNER_MODES = {"auto", "direct", "sudo"}
 DEFAULT_BACKUP_TIMEOUT_MINUTES = 120
 MIN_BACKUP_TIMEOUT_MINUTES = 0
 MAX_BACKUP_TIMEOUT_MINUTES = 1440
+SCHEDULE_MANAGER = BASE_DIR / "schedule_manager.py"
+DEFAULT_SCHEDULE_ENABLED = False
+DEFAULT_SCHEDULE_HOUR = 3
+DEFAULT_SCHEDULE_MINUTE = 0
+WEEKDAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+WEEKDAY_LABELS = {
+    "mon": "Pzt",
+    "tue": "Sal",
+    "wed": "Çar",
+    "thu": "Per",
+    "fri": "Cum",
+    "sat": "Cmt",
+    "sun": "Paz",
+}
 BACKUP_PROGRESS_STEPS = [
     ("Yedekleme basladi:", 8, "İş başlatıldı"),
     ("Veritabanlari yedekleniyor...", 18, "Veritabanı dökümü alınıyor"),
@@ -76,11 +90,57 @@ def _parse_int(value: Any, default: int) -> int:
         return default
 
 
+def _parse_bool(value: Any, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off", ""}:
+        return False
+    return default
+
+
 def _sanitize_timeout_minutes(value: Any, default: int) -> int:
     timeout_minutes = _parse_int(value, default)
     if timeout_minutes < MIN_BACKUP_TIMEOUT_MINUTES or timeout_minutes > MAX_BACKUP_TIMEOUT_MINUTES:
         return default
     return timeout_minutes
+
+
+def _sanitize_schedule_hour(value: Any, default: int) -> int:
+    hour = _parse_int(value, default)
+    if hour < 0 or hour > 23:
+        return default
+    return hour
+
+
+def _sanitize_schedule_minute(value: Any, default: int) -> int:
+    minute = _parse_int(value, default)
+    if minute < 0 or minute > 59:
+        return default
+    return minute
+
+
+def _sanitize_schedule_weekdays(value: Any, default: list[str]) -> list[str]:
+    if isinstance(value, str):
+        candidates = [item.strip().lower() for item in value.split(",")]
+    elif isinstance(value, (list, tuple, set)):
+        candidates = [str(item).strip().lower() for item in value]
+    else:
+        candidates = list(default)
+
+    seen: set[str] = set()
+    weekdays: list[str] = []
+    for day in WEEKDAY_ORDER:
+        if day in candidates and day not in seen:
+            weekdays.append(day)
+            seen.add(day)
+
+    return weekdays or list(default)
 
 
 def _now_iso() -> str:
@@ -189,16 +249,32 @@ def _job_progress(job: dict[str, Any], log_content: str) -> dict[str, Any]:
     return {"percent": min(max(percent, 0), 100), "label": label}
 
 
-def _settings_defaults() -> dict[str, int]:
+def _settings_defaults() -> dict[str, Any]:
     return {
         "backup_timeout_minutes": _sanitize_timeout_minutes(
             os.environ.get("CYBERPANEL_SERVER_BACKUP_TIMEOUT_MINUTES"),
             DEFAULT_BACKUP_TIMEOUT_MINUTES,
-        )
+        ),
+        "backup_schedule_enabled": _parse_bool(
+            os.environ.get("CYBERPANEL_SERVER_BACKUP_SCHEDULE_ENABLED"),
+            DEFAULT_SCHEDULE_ENABLED,
+        ),
+        "backup_schedule_hour": _sanitize_schedule_hour(
+            os.environ.get("CYBERPANEL_SERVER_BACKUP_SCHEDULE_HOUR"),
+            DEFAULT_SCHEDULE_HOUR,
+        ),
+        "backup_schedule_minute": _sanitize_schedule_minute(
+            os.environ.get("CYBERPANEL_SERVER_BACKUP_SCHEDULE_MINUTE"),
+            DEFAULT_SCHEDULE_MINUTE,
+        ),
+        "backup_schedule_weekdays": _sanitize_schedule_weekdays(
+            os.environ.get("CYBERPANEL_SERVER_BACKUP_SCHEDULE_WEEKDAYS"),
+            WEEKDAY_ORDER,
+        ),
     }
 
 
-def load_ui_settings() -> dict[str, int]:
+def load_ui_settings() -> dict[str, Any]:
     ensure_runtime_dirs()
     settings = _settings_defaults()
 
@@ -215,13 +291,44 @@ def load_ui_settings() -> dict[str, int]:
             payload.get("backup_timeout_minutes"),
             settings["backup_timeout_minutes"],
         )
+        settings["backup_schedule_enabled"] = _parse_bool(
+            payload.get("backup_schedule_enabled"),
+            settings["backup_schedule_enabled"],
+        )
+        settings["backup_schedule_hour"] = _sanitize_schedule_hour(
+            payload.get("backup_schedule_hour"),
+            settings["backup_schedule_hour"],
+        )
+        settings["backup_schedule_minute"] = _sanitize_schedule_minute(
+            payload.get("backup_schedule_minute"),
+            settings["backup_schedule_minute"],
+        )
+        settings["backup_schedule_weekdays"] = _sanitize_schedule_weekdays(
+            payload.get("backup_schedule_weekdays"),
+            settings["backup_schedule_weekdays"],
+        )
 
     return settings
 
 
-def save_ui_settings(settings: dict[str, Any]) -> dict[str, int]:
+def save_ui_settings(settings: dict[str, Any]) -> dict[str, Any]:
     current = load_ui_settings()
-    current["backup_timeout_minutes"] = validate_backup_timeout_minutes(settings.get("backup_timeout_minutes"))
+    if "backup_timeout_minutes" in settings:
+        current["backup_timeout_minutes"] = validate_backup_timeout_minutes(settings.get("backup_timeout_minutes"))
+    if {
+        "backup_schedule_enabled",
+        "backup_schedule_hour",
+        "backup_schedule_minute",
+        "backup_schedule_weekdays",
+    } & set(settings.keys()):
+        current.update(
+            validate_backup_schedule_settings(
+                settings.get("backup_schedule_enabled", current["backup_schedule_enabled"]),
+                settings.get("backup_schedule_hour", current["backup_schedule_hour"]),
+                settings.get("backup_schedule_minute", current["backup_schedule_minute"]),
+                settings.get("backup_schedule_weekdays", current["backup_schedule_weekdays"]),
+            )
+        )
     _write_json(SETTINGS_FILE, current)
     return current
 
@@ -242,6 +349,58 @@ def validate_backup_timeout_minutes(value: Any) -> int:
         )
 
     return timeout_minutes
+
+
+def validate_backup_schedule_settings(
+    enabled: Any,
+    hour: Any,
+    minute: Any,
+    weekdays: Any,
+) -> dict[str, Any]:
+    explicit_weekdays: list[str] | None
+    if isinstance(weekdays, str):
+        explicit_weekdays = [item.strip().lower() for item in weekdays.split(",") if item.strip()]
+    elif isinstance(weekdays, (list, tuple, set)):
+        explicit_weekdays = [str(item).strip().lower() for item in weekdays if str(item).strip()]
+    else:
+        explicit_weekdays = None
+
+    schedule_enabled = _parse_bool(enabled, DEFAULT_SCHEDULE_ENABLED)
+    schedule_hour = _sanitize_schedule_hour(hour, DEFAULT_SCHEDULE_HOUR)
+    schedule_minute = _sanitize_schedule_minute(minute, DEFAULT_SCHEDULE_MINUTE)
+    schedule_weekdays = _sanitize_schedule_weekdays(weekdays, WEEKDAY_ORDER)
+
+    raw_hour = str(hour).strip() if hour is not None else ""
+    raw_minute = str(minute).strip() if minute is not None else ""
+
+    if raw_hour and _parse_int(raw_hour, -1) != schedule_hour:
+        raise ServiceError("Zamanlama saati 0 ile 23 arasında olmalıdır.")
+    if raw_minute and _parse_int(raw_minute, -1) != schedule_minute:
+        raise ServiceError("Zamanlama dakikası 0 ile 59 arasında olmalıdır.")
+    if explicit_weekdays is not None and any(day not in WEEKDAY_ORDER for day in explicit_weekdays):
+        raise ServiceError("Zamanlama günlerinden biri geçerli değil.")
+    if schedule_enabled and explicit_weekdays is not None and not explicit_weekdays:
+        raise ServiceError("Otomatik yedekleme için en az bir gün seçilmelidir.")
+
+    return {
+        "backup_schedule_enabled": schedule_enabled,
+        "backup_schedule_hour": schedule_hour,
+        "backup_schedule_minute": schedule_minute,
+        "backup_schedule_weekdays": schedule_weekdays,
+    }
+
+
+def summarize_backup_schedule(settings: dict[str, Any]) -> str:
+    if not settings.get("backup_schedule_enabled"):
+        return "Otomatik yedekleme kapalı."
+
+    weekdays = settings.get("backup_schedule_weekdays") or []
+    if weekdays == WEEKDAY_ORDER:
+        day_label = "Her gün"
+    else:
+        day_label = ", ".join(WEEKDAY_LABELS.get(day, day) for day in weekdays)
+
+    return f"{day_label} {settings['backup_schedule_hour']:02d}:{settings['backup_schedule_minute']:02d}"
 
 
 def _has_active_jobs() -> bool:
@@ -325,6 +484,72 @@ def _resolve_sudo_runner_command(job_path: Path) -> list[str]:
     return ["sudo", "-n", str(PRIVILEGED_JOB_RUNNER), str(job_path)]
 
 
+def _resolve_schedule_command(config_path: Path) -> list[str]:
+    if RUNNER_MODE not in ALLOWED_RUNNER_MODES:
+        raise ServiceError(
+            f"Geçersiz runner modu: {RUNNER_MODE}. Desteklenen değerler: auto, direct, sudo."
+        )
+
+    if RUNNER_MODE == "direct" or (RUNNER_MODE == "auto" and os.geteuid() == 0):
+        return [sys.executable, str(SCHEDULE_MANAGER), "apply", str(config_path)]
+
+    if not PRIVILEGED_JOB_RUNNER.exists():
+        raise ServiceError(
+            "Zamanlama ayarını uygulamak için ayrı runner bulunamadı. "
+            f"Beklenen yol: {PRIVILEGED_JOB_RUNNER}"
+        )
+    if not os.access(PRIVILEGED_JOB_RUNNER, os.X_OK):
+        raise ServiceError(f"Ayrı runner çalıştırılabilir değil: {PRIVILEGED_JOB_RUNNER}")
+    if not shutil.which("sudo"):
+        raise ServiceError("sudo bulunamadı. Zamanlama ayarı uygulanamıyor.")
+
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", str(PRIVILEGED_JOB_RUNNER), "--check"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ServiceError("Root runner kontrolü zaman aşımına uğradı.") from exc
+
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise ServiceError(
+            "Zamanlama ayarı uygulanamıyor. CyberPanel entegrasyon installer'ını çalıştırın "
+            "ve sudoers ayarını doğrulayın."
+            + (f" Ayrıntı: {detail}" if detail else "")
+        )
+
+    return ["sudo", "-n", str(PRIVILEGED_JOB_RUNNER), "--apply-schedule", str(config_path)]
+
+
+def apply_backup_schedule(settings: dict[str, Any]) -> None:
+    ensure_runtime_dirs()
+    request_path = UI_STATE_DIR / f"schedule-request-{uuid.uuid4().hex}.json"
+    _write_json(request_path, settings)
+
+    try:
+        result = subprocess.run(
+            _resolve_schedule_command(request_path),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(BASE_DIR),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ServiceError("Zamanlama ayarı uygulanırken zaman aşımı oluştu.") from exc
+    finally:
+        try:
+            request_path.unlink()
+        except FileNotFoundError:
+            pass
+
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise ServiceError(detail or "Zamanlama ayarı uygulanamadı.")
+
+
 def create_job(job_type: str, command: list[str], env: dict[str, str] | None = None, meta: dict[str, Any] | None = None) -> dict[str, Any]:
     ensure_runtime_dirs()
 
@@ -372,6 +597,17 @@ def start_backup_job(mode: str, timeout_minutes: Any = None) -> dict[str, Any]:
             "timeout_minutes": validated_timeout_minutes,
         },
     )
+
+
+def update_backup_schedule(enabled: Any, hour: Any, minute: Any, weekdays: Any) -> dict[str, Any]:
+    current_settings = load_ui_settings()
+    validated_schedule = validate_backup_schedule_settings(enabled, hour, minute, weekdays)
+    candidate_settings = {
+        **current_settings,
+        **validated_schedule,
+    }
+    apply_backup_schedule(candidate_settings)
+    return save_ui_settings(validated_schedule)
 
 
 def start_restore_job(target_file: str, confirm_host: str, skip_db: bool, skip_files: bool, skip_configs: bool, skip_services: bool) -> dict[str, Any]:
@@ -552,6 +788,7 @@ def dashboard_state() -> dict[str, Any]:
         "latest_backup_summary": latest_backup_summary(backups),
         "active_job_summary": active_job_summary(jobs),
         "backup_settings": ui_settings,
+        "backup_schedule_summary": summarize_backup_schedule(ui_settings),
     }
 
 
@@ -565,6 +802,7 @@ def dashboard_context() -> dict[str, Any]:
         "latest_backup_summary": state["latest_backup_summary"],
         "active_job_summary": state["active_job_summary"],
         "backup_settings": state["backup_settings"],
+        "backup_schedule_summary": state["backup_schedule_summary"],
         "host_fqdn": HOST_FQDN,
         "host_slug": HOST_SLUG,
         "backup_script": str(BACKUP_SCRIPT),

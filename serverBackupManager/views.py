@@ -56,6 +56,31 @@ def run_backup(request: HttpRequest) -> HttpResponse:
 
 @admin_required
 @require_POST
+def save_schedule(request: HttpRequest) -> HttpResponse:
+    schedule_enabled = request.POST.get("schedule_enabled") == "on"
+    schedule_hour = request.POST.get("schedule_hour", "").strip()
+    schedule_minute = request.POST.get("schedule_minute", "").strip()
+    schedule_weekdays = request.POST.getlist("schedule_weekdays")
+
+    try:
+        settings = services.update_backup_schedule(
+            enabled=schedule_enabled,
+            hour=schedule_hour,
+            minute=schedule_minute,
+            weekdays=schedule_weekdays,
+        )
+        messages.success(
+            request,
+            f"Zamanlama kaydedildi: {services.summarize_backup_schedule(settings)}",
+        )
+    except services.ServiceError as exc:
+        messages.error(request, str(exc))
+
+    return redirect("serverBackupManager:index")
+
+
+@admin_required
+@require_POST
 def run_restore(request: HttpRequest) -> HttpResponse:
     target_file = request.POST.get("target_file", "").strip()
     confirm_host = request.POST.get("confirm_host", "").strip()
