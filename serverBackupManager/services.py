@@ -86,14 +86,14 @@ def create_job(job_type: str, command: list[str], env: dict[str, str] | None = N
 
 def _validate_script(path: Path, label: str) -> None:
     if not path.exists():
-        raise ServiceError(f"{label} script bulunamadi: {path}")
+        raise ServiceError(f"{label} betiği bulunamadı: {path}")
     if not os.access(path, os.X_OK):
-        raise ServiceError(f"{label} script calistirilabilir degil: {path}")
+        raise ServiceError(f"{label} betiği çalıştırılabilir değil: {path}")
 
 
 def start_backup_job(mode: str) -> dict[str, Any]:
     if mode not in ALLOWED_BACKUP_MODES:
-        raise ServiceError(f"Gecersiz backup modu: {mode}")
+        raise ServiceError(f"Geçersiz yedekleme modu: {mode}")
 
     _validate_script(BACKUP_SCRIPT, "Backup")
     return create_job(
@@ -106,7 +106,7 @@ def start_backup_job(mode: str) -> dict[str, Any]:
 
 def start_restore_job(target_file: str, confirm_host: str, skip_db: bool, skip_files: bool, skip_configs: bool, skip_services: bool) -> dict[str, Any]:
     if not BACKUP_RE.match(target_file):
-        raise ServiceError("Hedef backup dosya adi gecerli degil.")
+        raise ServiceError("Hedef yedek dosyası geçerli değil.")
 
     _validate_script(RESTORE_SCRIPT, "Restore")
 
@@ -158,7 +158,7 @@ def list_jobs(limit: int = 20) -> list[dict[str, Any]]:
 def get_job(job_id: str) -> dict[str, Any]:
     path = _job_file(job_id)
     if not path.exists():
-        raise ServiceError("Job bulunamadi.")
+        raise ServiceError("İş kaydı bulunamadı.")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -185,12 +185,12 @@ def list_remote_backups() -> list[dict[str, Any]]:
             timeout=30,
         )
     except FileNotFoundError as exc:
-        raise ServiceError("rclone bulunamadi.") from exc
+        raise ServiceError("rclone bulunamadı.") from exc
     except subprocess.CalledProcessError as exc:
-        stderr = exc.stderr.strip() or exc.stdout.strip() or "rclone lsf basarisiz oldu."
+        stderr = exc.stderr.strip() or exc.stdout.strip() or "rclone lsf komutu başarısız oldu."
         raise ServiceError(stderr) from exc
     except subprocess.TimeoutExpired as exc:
-        raise ServiceError("Remote backup listesi zaman asimina ugradi.") from exc
+        raise ServiceError("Uzak yedek listesi zaman aşımına uğradı.") from exc
 
     chains: dict[str, dict[str, Any]] = {}
     for line in result.stdout.splitlines():

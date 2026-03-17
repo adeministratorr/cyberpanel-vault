@@ -17,7 +17,7 @@ def run_backup(request: HttpRequest) -> HttpResponse:
 
     try:
         services.start_backup_job(mode)
-        messages.success(request, f"Backup job baslatildi. Mod: {mode}")
+        messages.success(request, f"Yedekleme işi başlatıldı. Mod: {mode}")
     except services.ServiceError as exc:
         messages.error(request, str(exc))
 
@@ -34,7 +34,7 @@ def run_restore(request: HttpRequest) -> HttpResponse:
     skip_services = request.POST.get("skip_services") == "on"
 
     if not target_file:
-        messages.error(request, "Restore icin bir backup secilmelidir.")
+        messages.error(request, "Geri yükleme için bir yedek seçin.")
         return redirect("serverBackupManager:index")
 
     try:
@@ -46,7 +46,7 @@ def run_restore(request: HttpRequest) -> HttpResponse:
             skip_configs=skip_configs,
             skip_services=skip_services,
         )
-        messages.success(request, f"Restore job baslatildi: {target_file}")
+        messages.success(request, f"Geri yükleme işi başlatıldı: {target_file}")
     except services.ServiceError as exc:
         messages.error(request, str(exc))
 

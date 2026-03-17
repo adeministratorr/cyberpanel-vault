@@ -294,20 +294,18 @@
         <section class="hero">
             <div class="panel stack">
                 <div class="row">
-                    <span class="pill">Host: {{ host_fqdn }}</span>
-                    <span class="pill">Remote: {{ host_slug }} @ {{ backup_script }}</span>
+                    <span class="pill">Sunucu: {{ host_fqdn }}</span>
+                    <span class="pill">Yedek yolu: {{ host_slug }} @ {{ backup_script }}</span>
                 </div>
                 <div>
-                    <h1>Server Backup Manager</h1>
+                    <h1>Sunucu Yedekleme Yöneticisi</h1>
                     <p class="meta">
-                        CyberPanel paneline baglanacak sekilde tasarlanmis host-level backup/restore arayuzu.
-                        Site yedekleri icin Backup V2 kullanilirken, bu ekran sunucu genelindeki backup zincirini
-                        ve geri yukleme operasyonlarini yonetmek icin kullanilir.
+                        Bu ekran, CyberPanel'e bağlanacak şekilde hazırlanmış sunucu düzeyinde bir yedekleme ve geri yükleme arayüzüdür.
+                        Site yedekleri için Backup V2 kullanılabilir; sunucunun tamamını ilgilendiren zincirli yedek ve geri yükleme işlemleri ise buradan yönetilir.
                     </p>
                 </div>
                 <div class="warning">
-                    Restore islemi yikicidir. Secilen backup zinciri hedef backup noktasina kadar uygulanir ve canli
-                    sistem uzerine yazilir.
+                    Geri yükleme işlemi geri alınamaz. Seçtiğiniz zincir, belirlediğiniz noktaya kadar uygulanır ve canlı sistemdeki verilerin üzerine yazılır.
                 </div>
                 {% if remote_error %}
                     <div class="danger">{{ remote_error }}</div>
@@ -315,36 +313,36 @@
             </div>
 
             <div class="panel stack">
-                <h2>Backup Baslat</h2>
+                <h2>Yedekleme Başlat</h2>
                 <form method="post" action="{% url 'serverBackupManager:run_backup' %}" class="stack">
                     {% csrf_token %}
                     <div>
-                        <label for="mode">Backup modu</label>
+                        <label for="mode">Yedekleme modu</label>
                         <select id="mode" name="mode">
-                            <option value="auto">Auto (haftalik full, diger kosular incremental)</option>
-                            <option value="full">Full</option>
-                            <option value="incremental">Incremental</option>
+                            <option value="auto">Otomatik (haftalık tam, aradaki çalışmalarda artımlı)</option>
+                            <option value="full">Tam</option>
+                            <option value="incremental">Artımlı</option>
                         </select>
                     </div>
-                    <button class="primary" type="submit">Backup Job Baslat</button>
+                    <button class="primary" type="submit">Yedeklemeyi Başlat</button>
                 </form>
 
                 <div class="meta">
-                    Restore script yolu: {{ restore_script }}
+                    Geri yükleme betiği: {{ restore_script }}
                 </div>
             </div>
         </section>
 
         <section class="grid">
             <div class="panel stack">
-                <h2>Remote Backup Zincirleri</h2>
-                <div class="meta">Sadece bu host slug ile eslesen backup zincirleri listelenir.</div>
+                <h2>Uzak Yedek Zincirleri</h2>
+                <div class="meta">Burada yalnızca bu sunucuya ait yedek zincirleri listelenir.</div>
                 <table>
                     <thead>
                         <tr>
                             <th>Zincir</th>
                             <th>Adet</th>
-                            <th>Son Backup</th>
+                            <th>Son Yedek</th>
                             <th>Hedef</th>
                         </tr>
                     </thead>
@@ -353,7 +351,7 @@
                             <tr>
                                 <td>
                                     <strong>{{ chain.chain_id }}</strong><br>
-                                    <span class="meta">Ilk: {{ chain.full_timestamp }}</span>
+                                    <span class="meta">İlk parça: {{ chain.full_timestamp }}</span>
                                 </td>
                                 <td>{{ chain.backup_count }}</td>
                                 <td>{{ chain.latest_timestamp }}</td>
@@ -369,7 +367,7 @@
                             </tr>
                         {% empty %}
                             <tr>
-                                <td colspan="4">Backup bulunamadi.</td>
+                                <td colspan="4">Henüz yedek bulunamadı.</td>
                             </tr>
                         {% endfor %}
                     </tbody>
@@ -377,27 +375,27 @@
             </div>
 
             <div class="panel stack">
-                <h2>Restore Baslat</h2>
+                <h2>Geri Yüklemeyi Başlat</h2>
                 <form method="post" action="{% url 'serverBackupManager:run_restore' %}" class="stack" id="restore-form">
                     {% csrf_token %}
                     <div>
-                        <label for="target_file">Hedef backup</label>
+                        <label for="target_file">Hedef yedek</label>
                         <input id="target_file" name="target_file" type="text" placeholder="backup__host-...tar.gz.enc">
                     </div>
                     <div>
-                        <label for="confirm_host">Onay icin host FQDN girin</label>
+                        <label for="confirm_host">Onay için sunucunun FQDN değerini yazın</label>
                         <input id="confirm_host" name="confirm_host" type="text" placeholder="{{ host_fqdn }}">
                     </div>
                     <div class="checklist">
-                        <label class="check"><input type="checkbox" name="skip_db"> Veritabanini atla</label>
-                        <label class="check"><input type="checkbox" name="skip_files"> Dosyalari atla</label>
-                        <label class="check"><input type="checkbox" name="skip_configs"> Config restore atla</label>
-                        <label class="check"><input type="checkbox" name="skip_services"> Servis restart atla</label>
+                        <label class="check"><input type="checkbox" name="skip_db"> Veritabanını atla</label>
+                        <label class="check"><input type="checkbox" name="skip_files"> Dosyaları atla</label>
+                        <label class="check"><input type="checkbox" name="skip_configs"> Yapılandırma dosyalarını atla</label>
+                        <label class="check"><input type="checkbox" name="skip_services"> Servisleri yeniden başlatma</label>
                     </div>
                     <div class="danger">
-                        Bu islem secilen zincirin ilgili noktasini canli sisteme uygular. Geri alma mekanizmasi yoktur.
+                        Bu işlem, seçtiğiniz zincirin ilgili noktasını canlı sisteme uygular. Sonradan geri alma seçeneği yoktur.
                     </div>
-                    <button class="danger-btn" type="submit">Restore Job Baslat</button>
+                    <button class="danger-btn" type="submit">Geri Yüklemeyi Başlat</button>
                 </form>
             </div>
         </section>
@@ -405,7 +403,7 @@
         <section class="grid" style="margin-top: 24px;">
             <div class="panel stack">
                 <div class="row">
-                    <h2 style="margin-bottom: 0;">Son Joblar</h2>
+                    <h2 style="margin-bottom: 0;">Son İşler</h2>
                     <button class="secondary" type="button" id="refresh-jobs">Yenile</button>
                 </div>
                 <div id="jobs">
@@ -418,25 +416,25 @@
                             </div>
                             <div class="meta">ID: {{ job.id }}</div>
                             {% if job.meta.target_file %}
-                                <div class="meta">Target: {{ job.meta.target_file }}</div>
+                                <div class="meta">Hedef: {{ job.meta.target_file }}</div>
                             {% endif %}
                             {% if job.meta.mode %}
-                                <div class="meta">Mode: {{ job.meta.mode }}</div>
+                                <div class="meta">Mod: {{ job.meta.mode }}</div>
                             {% endif %}
                             <div class="row">
-                                <button class="secondary log-button" type="button" data-job-id="{{ job.id }}">Log Goster</button>
+                                <button class="secondary log-button" type="button" data-job-id="{{ job.id }}">Günlüğü Aç</button>
                             </div>
                         </article>
                     {% empty %}
-                        <div class="meta">Job bulunamadi.</div>
+                        <div class="meta">Henüz iş kaydı yok.</div>
                     {% endfor %}
                 </div>
             </div>
 
             <div class="panel stack">
-                <h2>Job Log</h2>
-                <div class="meta" id="log-meta">Bir job secin.</div>
-                <pre class="logbox" id="job-log">Log bekleniyor...</pre>
+                <h2>İş Günlüğü</h2>
+                <div class="meta" id="log-meta">Bir iş seçin.</div>
+                <pre class="logbox" id="job-log">Günlük burada görünecek.</pre>
             </div>
         </section>
     </div>
@@ -475,10 +473,10 @@
                         <span class="meta">${job.created_at || ""}</span>
                     </div>
                     <div class="meta">ID: ${job.id}</div>
-                    ${job.meta && job.meta.target_file ? `<div class="meta">Target: ${job.meta.target_file}</div>` : ""}
-                    ${job.meta && job.meta.mode ? `<div class="meta">Mode: ${job.meta.mode}</div>` : ""}
+                    ${job.meta && job.meta.target_file ? `<div class="meta">Hedef: ${job.meta.target_file}</div>` : ""}
+                    ${job.meta && job.meta.mode ? `<div class="meta">Mod: ${job.meta.mode}</div>` : ""}
                     <div class="row">
-                        <button class="secondary log-button" type="button" data-job-id="${job.id}">Log Goster</button>
+                        <button class="secondary log-button" type="button" data-job-id="${job.id}">Günlüğü Aç</button>
                     </div>
                 `;
                 jobsContainer.appendChild(article);
@@ -488,13 +486,13 @@
         async function loadLog(jobId) {
             const response = await fetch(`${logBaseUrl}${jobId}/log/`, {headers: {"Accept": "application/json"}});
             if (!response.ok) {
-                logMeta.textContent = "Log okunamadi.";
+                logMeta.textContent = "Günlük okunamadı.";
                 logBox.textContent = "";
                 return;
             }
             const payload = await response.json();
             logMeta.textContent = `${payload.job.type.toUpperCase()} | ${payload.job.status} | ${payload.job.id}`;
-            logBox.textContent = payload.log || "Log yok.";
+            logBox.textContent = payload.log || "Günlük kaydı yok.";
         }
 
         jobsContainer.addEventListener("click", (event) => {

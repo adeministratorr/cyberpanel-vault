@@ -1,78 +1,78 @@
-# CyberPanel Vault Kurulum ve Kullanim
+# CyberPanel Vault Kurulum ve Kullanım
 
-Bu belge, `CyberPanel Vault` projesini bir CyberPanel sunucusuna kurmak ve guvenli sekilde kullanmak icin gereken temel adimlari toplar.
+Bu kılavuz, `CyberPanel Vault`'u bir CyberPanel sunucusuna kurmak ve günlük kullanımda sorunsuz biçimde çalıştırmak için hazırlandı.
 
-Yayinci: [Adem YÜCE](https://ademyuce.tr) - [ademyuce.tr](https://ademyuce.tr)
+Yayıncı: [Adem YÜCE](https://ademyuce.tr) - [ademyuce.tr](https://ademyuce.tr)
 
-## Ne saglar
+## Neler sunar
 
-- Haftalik tam yedek
-- Aradaki kosularda incremental dosya ve config yedegi
-- Her kosuda tam veritabani dump'i
-- `openssl` ile sifrelenmis arsiv
-- `rclone` ile Google Drive yuklemesi
-- Zincirli restore akisi
-- CyberPanel arayuzune baglanabilecek Django app iskeleti
+- Haftada bir tam yedek
+- Tam yedekler arasındaki çalışmalarda artımlı dosya ve yapılandırma yedeği
+- Her çalışmada tam veritabanı dökümü
+- `openssl` ile şifrelenmiş arşiv
+- `rclone` ile Google Drive aktarımı
+- Zincir mantığıyla çalışan geri yükleme akışı
+- CyberPanel arayüzüne bağlanabilecek Django uygulama iskeleti
 
 ## Gereksinimler
 
-- Linux sunucu ve `root` erisimi
+- `root` erişimine sahip bir Linux sunucu
 - `rclone`
 - `mysql` ve `mysqldump`
 - `openssl`
 - `tar`, `gzip`, `sha256sum`, `flock`, `rsync`
-- `/etc/cyberpanel/mysqlPassword` dosyasi
-- Google Drive icin hazir `rclone` remote'u
-- Sifreleme parola dosyasi
+- `/etc/cyberpanel/mysqlPassword` dosyası
+- Google Drive için hazır bir `rclone` remote'u
+- Şifreleme için parola dosyası
 
 ## Kurulum
 
-1. Scriptleri sunucuya kopyalayin:
+1. Betikleri sunucuya kopyalayın:
 
 ```bash
 install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
 install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh
 ```
 
-2. Durum ve parola dizinlerini olusturun:
+2. Durum ve parola dizinlerini oluşturun:
 
 ```bash
 mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 ```
 
-3. Sifreleme dosyasini olusturun:
+3. Şifreleme dosyasını oluşturun:
 
 ```bash
 printf '%s\n' 'GUCLU_UZUN_BIR_SIFRE' >/root/.config/cyberpanel-backup/encryption.pass
 chmod 600 /root/.config/cyberpanel-backup/encryption.pass
 ```
 
-4. `rclone` tarafinda Google Drive remote'unu hazirlayin. Varsayilan remote adi `gdrive` olarak beklenir.
+4. `rclone` tarafında Google Drive bağlantısını hazırlayın. Betikler varsayılan olarak `gdrive` adlı remote'u kullanır.
 
-5. Ilk tam yedegi manuel alin:
+5. İlk yedeği elle başlatın:
 
 ```bash
 BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh
 ```
 
-6. Sonraki gunluk kosular icin `auto` modunu zamanlayin:
+6. Günlük çalışma için `auto` modunu zamanlayın:
 
 ```bash
 0 3 * * * BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh
 ```
 
-`auto` modunda script haftada bir tam yedek, diger kosularda incremental yedek alir.
+`auto` modunda betik haftada bir tam yedek alır; aradaki çalışmalarda artımlı yedek üretir.
 
-## Kullanim
+## Kullanım
 
-Backup modlari:
+Kullanabileceğiniz yedekleme modları:
 
 - `BACKUP_MODE=auto`
 - `BACKUP_MODE=full`
 - `BACKUP_MODE=incremental`
 
-Ornekler:
+Örnek:
 
 ```bash
 BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh
@@ -80,24 +80,24 @@ BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh
 BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh
 ```
 
-Onemli ortam degiskenleri:
+Sık kullanılan ortam değişkenleri:
 
-- `RCLONE_REMOTE`, varsayilan `gdrive`
-- `DRIVE_FOLDER`, varsayilan `cyberpanel-backups`
-- `BACKUP_DIR`, varsayilan `/root/backups`
-- `STATE_DIR`, varsayilan `/var/lib/cyberpanel-backup`
-- `LOG_FILE`, varsayilan `/var/log/cyberpanel_backup.log`
-- `ENCRYPTION_PASSWORD_FILE`, varsayilan `/root/.config/cyberpanel-backup/encryption.pass`
+- `RCLONE_REMOTE`, varsayılan `gdrive`
+- `DRIVE_FOLDER`, varsayılan `cyberpanel-backups`
+- `BACKUP_DIR`, varsayılan `/root/backups`
+- `STATE_DIR`, varsayılan `/var/lib/cyberpanel-backup`
+- `LOG_FILE`, varsayılan `/var/log/cyberpanel_backup.log`
+- `ENCRYPTION_PASSWORD_FILE`, varsayılan `/root/.config/cyberpanel-backup/encryption.pass`
 
-## Restore
+## Geri yükleme
 
-Canli degisiklik yapmadan once zinciri dogrulayin:
+Canlı sistemi değiştirmeden önce zinciri doğrulayın:
 
 ```bash
 /usr/local/bin/cyberpanel_restore.sh --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc
 ```
 
-Gercek restore:
+Gerçek geri yükleme için:
 
 ```bash
 /usr/local/bin/cyberpanel_restore.sh \
@@ -106,7 +106,7 @@ Gercek restore:
   --apply
 ```
 
-Opsiyonel bayraklar:
+İsterseniz şu seçeneklerle kısmi geri yükleme yapabilirsiniz:
 
 - `--skip-db`
 - `--skip-files`
@@ -114,15 +114,15 @@ Opsiyonel bayraklar:
 - `--skip-services`
 - `--keep-workdir`
 
-## CyberPanel arayuzune baglama
+## CyberPanel arayüzüne bağlama
 
-`serverBackupManager/` dizini bir Django app iskeletidir.
+`serverBackupManager/` dizini, CyberPanel içine eklenebilecek bir Django uygulama iskeletidir.
 
-Temel adimlar:
+Temel adımlar:
 
-1. Dizini CyberPanel Django kod tabanina ekleyin.
-2. `urls.py` icindeki route'lari panel URL yapisina baglayin.
-3. Asagidaki degiskenleri ayarlayin:
+1. Dizini CyberPanel'in Django kod tabanına ekleyin.
+2. `urls.py` içindeki yolları panelin mevcut URL yapısına bağlayın.
+3. Gerekli ortam değişkenlerini tanımlayın:
 
 ```bash
 export CYBERPANEL_SERVER_BACKUP_SCRIPT=/usr/local/bin/cyberpanel_full_backup.sh
@@ -130,11 +130,11 @@ export CYBERPANEL_SERVER_RESTORE_SCRIPT=/usr/local/bin/cyberpanel_restore.sh
 export CYBERPANEL_SERVER_BACKUP_UI_STATE_DIR=/var/lib/cyberpanel-backup-ui
 ```
 
-4. Web prosesi arka plan job baslatabilmeli ve host uzerinde `rclone` erisimi bulunmalidir.
+4. Web sürecinin arka planda iş başlatabildiğinden ve sunucuda `rclone` erişimi olduğundan emin olun.
 
-## Operasyon notlari
+## Operasyon notları
 
-- Scriptler `root` olarak calismalidir.
-- Restore tarafinda host FQDN dogrulamasi vardir.
-- UI tarafinda yalnizca mevcut host slug ile eslesen yedek zincirleri listelenir.
-- Uretimde kullanmadan once staging uzerinde tam restore testi yapin.
+- Betikler `root` olarak çalışmalıdır.
+- Geri yükleme sırasında mevcut sunucunun FQDN değeri doğrulanır.
+- Arayüz yalnızca o sunucuya ait yedek zincirlerini listeler.
+- Üretime almadan önce tam geri yükleme senaryosunu test ortamında deneyin.
