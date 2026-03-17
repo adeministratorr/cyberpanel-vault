@@ -132,7 +132,7 @@
             margin-bottom: 6px;
         }
 
-        input[type="text"], select {
+        input[type="text"], input[type="number"], select {
             width: 100%;
             border: 1px solid var(--line);
             background: var(--panel-soft);
@@ -143,6 +143,7 @@
         }
 
         input[type="text"]:focus,
+        input[type="number"]:focus,
         select:focus {
             outline: none;
             border-color: rgba(47, 128, 237, 0.45);
@@ -412,6 +413,19 @@
                             <option value="incremental">Artımlı</option>
                         </select>
                     </div>
+                    <div>
+                        <label for="timeout_minutes">Maksimum yedek süresi (dakika)</label>
+                        <input
+                            id="timeout_minutes"
+                            name="timeout_minutes"
+                            type="number"
+                            min="0"
+                            max="1440"
+                            step="1"
+                            value="{{ backup_settings.backup_timeout_minutes }}"
+                        >
+                        <div class="meta"><code>0</code> yazarsanız süre sınırı uygulanmaz. Değer arayüzde varsayılan olarak saklanır.</div>
+                    </div>
                     <button class="primary" type="submit">Yedeklemeyi Başlat</button>
                 </form>
 
@@ -558,6 +572,16 @@
                             {% if job.meta.mode %}
                                 <div class="meta">Mod: {{ job.meta.mode }}</div>
                             {% endif %}
+                            {% if job.meta.timeout_minutes == 0 or job.meta.timeout_minutes %}
+                                <div class="meta">
+                                    Süre sınırı:
+                                    {% if job.meta.timeout_minutes == 0 %}
+                                        limitsiz
+                                    {% else %}
+                                        {{ job.meta.timeout_minutes }} dakika
+                                    {% endif %}
+                                </div>
+                            {% endif %}
                             <div class="progress">
                                 <div class="progress-bar">
                                     <div class="progress-fill" style="width: {{ job.progress_percent }}%"></div>
@@ -599,6 +623,7 @@
         const logBox = document.getElementById("job-log");
         const logMeta = document.getElementById("log-meta");
         const targetInput = document.getElementById("target_file");
+        const backupTimeoutInput = document.getElementById("timeout_minutes");
         const backupsBody = document.getElementById("backups-body");
         const downloadLogButton = document.getElementById("download-log");
         let selectedJobId = "";
@@ -662,6 +687,10 @@
 
             remoteSummaryValue.textContent = Array.isArray(payload.backups) ? String(payload.backups.length) : "0";
             remoteSummaryNote.textContent = payload.remote_error || "Bu sunucuya ait uzak zincir sayısı";
+
+            if (payload.backup_settings && backupTimeoutInput && document.activeElement !== backupTimeoutInput) {
+                backupTimeoutInput.value = payload.backup_settings.backup_timeout_minutes ?? backupTimeoutInput.value;
+            }
         }
 
         function renderBackups(backups) {
@@ -758,6 +787,15 @@
                 modeMeta.className = "meta";
                 modeMeta.textContent = `Mod: ${job.meta.mode}`;
                 article.appendChild(modeMeta);
+            }
+
+            if (job.meta && Object.prototype.hasOwnProperty.call(job.meta, "timeout_minutes")) {
+                const timeoutMeta = document.createElement("div");
+                timeoutMeta.className = "meta";
+                timeoutMeta.textContent = job.meta.timeout_minutes === 0
+                    ? "Süre sınırı: limitsiz"
+                    : `Süre sınırı: ${job.meta.timeout_minutes} dakika`;
+                article.appendChild(timeoutMeta);
             }
 
             const progress = document.createElement("div");

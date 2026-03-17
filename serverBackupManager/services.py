@@ -14,6 +14,7 @@ from typing import Any
 BASE_DIR = Path(__file__).resolve().parent
 UI_STATE_DIR = Path(os.environ.get("CYBERPANEL_SERVER_BACKUP_UI_STATE_DIR", "/var/lib/cyberpanel-backup-ui"))
 JOBS_DIR = UI_STATE_DIR / "jobs"
+SETTINGS_FILE = UI_STATE_DIR / "settings.json"
 BACKUP_SCRIPT = Path(os.environ.get("CYBERPANEL_SERVER_BACKUP_SCRIPT", "/usr/local/bin/cyberpanel_full_backup.sh"))
 RESTORE_SCRIPT = Path(os.environ.get("CYBERPANEL_SERVER_RESTORE_SCRIPT", "/usr/local/bin/cyberpanel_restore.sh"))
 JOB_RUNNER = BASE_DIR / "job_runner.py"
@@ -32,6 +33,9 @@ JOB_ID_RE = re.compile(r"^\d{8}T\d{6}-[0-9a-f]{8}$")
 ALLOWED_BACKUP_MODES = {"auto", "full", "incremental"}
 ACTIVE_JOB_STATUSES = {"queued", "running"}
 ALLOWED_RUNNER_MODES = {"auto", "direct", "sudo"}
+DEFAULT_BACKUP_TIMEOUT_MINUTES = 120
+MIN_BACKUP_TIMEOUT_MINUTES = 0
+MAX_BACKUP_TIMEOUT_MINUTES = 1440
 BACKUP_PROGRESS_STEPS = [
     ("Yedekleme basladi:", 8, "İş başlatıldı"),
     ("Veritabanlari yedekleniyor...", 18, "Veritabanı dökümü alınıyor"),
@@ -63,6 +67,20 @@ RESTORE_PROGRESS_STEPS = [
 
 class ServiceError(RuntimeError):
     pass
+
+
+def _parse_int(value: Any, default: int) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _sanitize_timeout_minutes(value: Any, default: int) -> int:
+    timeout_minutes = _parse_int(value, default)
+    if timeout_minutes < MIN_BACKUP_TIMEOUT_MINUTES or timeout_minutes > MAX_BACKUP_TIMEOUT_MINUTES:
+        return default
+    return timeout_minutes
 
 
 def _now_iso() -> str:
@@ -123,6 +141,7 @@ def _public_job_view(job: dict[str, Any]) -> dict[str, Any]:
         "started_at": job.get("started_at", ""),
         "finished_at": job.get("finished_at", ""),
         "exit_code": job.get("exit_code"),
+        "error": job.get("error", ""),
         "meta": job.get("meta", {}),
         "progress_percent": progress["percent"],
         "progress_label": progress["label"],
@@ -158,13 +177,71 @@ def _job_progress(job: dict[str, Any], log_content: str) -> dict[str, Any]:
             label = step_label
 
     if status == "failed":
+        if "timeout_exceeded=" in log_content:
+            label = "Süre sınırında durdu"
         if percent >= 100:
             percent = 100
         elif percent < 15:
             percent = 15
-        label = f"{label} aşamasında durdu"
+        elif label != "Süre sınırında durdu":
+            label = f"{label} aşamasında durdu"
 
     return {"percent": min(max(percent, 0), 100), "label": label}
+
+
+def _settings_defaults() -> dict[str, int]:
+    return {
+        "backup_timeout_minutes": _sanitize_timeout_minutes(
+            os.environ.get("CYBERPANEL_SERVER_BACKUP_TIMEOUT_MINUTES"),
+            DEFAULT_BACKUP_TIMEOUT_MINUTES,
+        )
+    }
+
+
+def load_ui_settings() -> dict[str, int]:
+    ensure_runtime_dirs()
+    settings = _settings_defaults()
+
+    if not SETTINGS_FILE.exists():
+        return settings
+
+    try:
+        payload = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return settings
+
+    if isinstance(payload, dict):
+        settings["backup_timeout_minutes"] = _sanitize_timeout_minutes(
+            payload.get("backup_timeout_minutes"),
+            settings["backup_timeout_minutes"],
+        )
+
+    return settings
+
+
+def save_ui_settings(settings: dict[str, Any]) -> dict[str, int]:
+    current = load_ui_settings()
+    current["backup_timeout_minutes"] = validate_backup_timeout_minutes(settings.get("backup_timeout_minutes"))
+    _write_json(SETTINGS_FILE, current)
+    return current
+
+
+def validate_backup_timeout_minutes(value: Any) -> int:
+    raw = str(value).strip() if value is not None else ""
+    if raw == "":
+        return load_ui_settings()["backup_timeout_minutes"]
+
+    try:
+        timeout_minutes = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ServiceError("Yedek süresi dakika cinsinden tam sayı olmalıdır.") from exc
+
+    if timeout_minutes < MIN_BACKUP_TIMEOUT_MINUTES or timeout_minutes > MAX_BACKUP_TIMEOUT_MINUTES:
+        raise ServiceError(
+            f"Yedek süresi {MIN_BACKUP_TIMEOUT_MINUTES} ile {MAX_BACKUP_TIMEOUT_MINUTES} dakika arasında olmalıdır."
+        )
+
+    return timeout_minutes
 
 
 def _has_active_jobs() -> bool:
@@ -275,17 +352,25 @@ def _validate_script(path: Path, label: str) -> None:
         raise ServiceError(f"{label} betiği çalıştırılabilir değil: {path}")
 
 
-def start_backup_job(mode: str) -> dict[str, Any]:
+def start_backup_job(mode: str, timeout_minutes: Any = None) -> dict[str, Any]:
     if mode not in ALLOWED_BACKUP_MODES:
         raise ServiceError(f"Geçersiz yedekleme modu: {mode}")
 
+    validated_timeout_minutes = validate_backup_timeout_minutes(timeout_minutes)
     _validate_script(BACKUP_SCRIPT, "Backup")
     _ensure_no_active_jobs()
+    save_ui_settings({"backup_timeout_minutes": validated_timeout_minutes})
     return create_job(
         job_type="backup",
         command=[str(BACKUP_SCRIPT)],
-        env={"BACKUP_MODE": mode},
-        meta={"mode": mode},
+        env={
+            "BACKUP_MODE": mode,
+            "BACKUP_TIMEOUT_MINUTES": str(validated_timeout_minutes),
+        },
+        meta={
+            "mode": mode,
+            "timeout_minutes": validated_timeout_minutes,
+        },
     )
 
 
@@ -451,6 +536,7 @@ def active_job_summary(jobs: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 def dashboard_state() -> dict[str, Any]:
     jobs = list_jobs()
+    ui_settings = load_ui_settings()
 
     try:
         backups = list_remote_backups()
@@ -465,6 +551,7 @@ def dashboard_state() -> dict[str, Any]:
         "remote_error": remote_error,
         "latest_backup_summary": latest_backup_summary(backups),
         "active_job_summary": active_job_summary(jobs),
+        "backup_settings": ui_settings,
     }
 
 
@@ -477,6 +564,7 @@ def dashboard_context() -> dict[str, Any]:
         "jobs": state["jobs"],
         "latest_backup_summary": state["latest_backup_summary"],
         "active_job_summary": state["active_job_summary"],
+        "backup_settings": state["backup_settings"],
         "host_fqdn": HOST_FQDN,
         "host_slug": HOST_SLUG,
         "backup_script": str(BACKUP_SCRIPT),

@@ -41,10 +41,13 @@ def index(request: HttpRequest) -> HttpResponse:
 @require_POST
 def run_backup(request: HttpRequest) -> HttpResponse:
     mode = request.POST.get("mode", "auto").strip() or "auto"
+    timeout_minutes = request.POST.get("timeout_minutes", "").strip()
 
     try:
-        services.start_backup_job(mode)
-        messages.success(request, f"Yedekleme işi başlatıldı. Mod: {mode}")
+        timeout_value = services.validate_backup_timeout_minutes(timeout_minutes)
+        services.start_backup_job(mode, timeout_value)
+        timeout_label = "limitsiz" if timeout_value == 0 else f"{timeout_value} dakika"
+        messages.success(request, f"Yedekleme işi başlatıldı. Mod: {mode} | Süre sınırı: {timeout_label}")
     except services.ServiceError as exc:
         messages.error(request, str(exc))
 

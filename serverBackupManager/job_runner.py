@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -20,6 +21,10 @@ BACKUP_RE = re.compile(
 )
 JOB_ID_RE = re.compile(r"^\d{8}T\d{6}-[0-9a-f]{8}$")
 ALLOWED_BACKUP_MODES = {"auto", "full", "incremental"}
+DEFAULT_BACKUP_TIMEOUT_MINUTES = 120
+MIN_BACKUP_TIMEOUT_MINUTES = 0
+MAX_BACKUP_TIMEOUT_MINUTES = 1440
+TIMEOUT_GRACE_SECONDS = 30
 
 
 class JobRunnerError(RuntimeError):
@@ -36,6 +41,20 @@ def write_json(path: Path, payload: dict) -> None:
     tmp_path.chmod(0o600)
     tmp_path.replace(path)
     path.chmod(0o600)
+
+
+def parse_timeout_minutes(value: object) -> int:
+    try:
+        timeout_minutes = int(str(value).strip())
+    except (TypeError, ValueError) as exc:
+        raise JobRunnerError("Yedek süresi dakika cinsinden tam sayı olmalıdır.") from exc
+
+    if timeout_minutes < MIN_BACKUP_TIMEOUT_MINUTES or timeout_minutes > MAX_BACKUP_TIMEOUT_MINUTES:
+        raise JobRunnerError(
+            f"Yedek süresi {MIN_BACKUP_TIMEOUT_MINUTES} ile {MAX_BACKUP_TIMEOUT_MINUTES} dakika arasında olmalıdır."
+        )
+
+    return timeout_minutes
 
 
 def validate_job_path(job_path: Path) -> Path:
@@ -57,16 +76,25 @@ def load_job(job_path: Path) -> dict:
     return json.loads(job_path.read_text(encoding="utf-8"))
 
 
-def build_job_command(job: dict) -> tuple[list[str], dict[str, str]]:
+def build_job_command(job: dict) -> tuple[list[str], dict[str, str], int | None]:
     job_type = job.get("type")
     meta = job.get("meta") or {}
-    base_env = os.environ.copy()
+    raw_job_env = job.get("env") or {}
+    base_env = {**os.environ.copy(), **{str(key): str(value) for key, value in raw_job_env.items()}}
 
     if job_type == "backup":
         mode = meta.get("mode", "")
         if mode not in ALLOWED_BACKUP_MODES:
             raise JobRunnerError(f"Geçersiz backup modu: {mode}")
-        return [str(BACKUP_SCRIPT)], {**base_env, "BACKUP_MODE": mode}
+        timeout_minutes = parse_timeout_minutes(meta.get("timeout_minutes", DEFAULT_BACKUP_TIMEOUT_MINUTES))
+        timeout_seconds = timeout_minutes * 60 if timeout_minutes > 0 else None
+        return [
+            str(BACKUP_SCRIPT)
+        ], {
+            **base_env,
+            "BACKUP_MODE": mode,
+            "BACKUP_TIMEOUT_MINUTES": str(timeout_minutes),
+        }, timeout_seconds
 
     if job_type == "restore":
         target_file = str(meta.get("target_file", ""))
@@ -96,7 +124,7 @@ def build_job_command(job: dict) -> tuple[list[str], dict[str, str]]:
         if meta.get("skip_services"):
             command.append("--skip-services")
 
-        return command, base_env
+        return command, base_env, None
 
     raise JobRunnerError(f"Desteklenmeyen iş türü: {job_type}")
 
@@ -133,7 +161,7 @@ def main() -> int:
             ensure_script_ready(BACKUP_SCRIPT, "Backup")
         elif job.get("type") == "restore":
             ensure_script_ready(RESTORE_SCRIPT, "Restore")
-        command, env = build_job_command(job)
+        command, env, timeout_seconds = build_job_command(job)
     except JobRunnerError as exc:
         mark_job_failed(job_path, job, str(exc))
         raise SystemExit(str(exc))
@@ -154,6 +182,8 @@ def main() -> int:
         log_file.write(f"[runner] started_at={job['started_at']}\n")
         log_file.write(f"[runner] type={job.get('type', '')}\n")
         log_file.write(f"[runner] command={' '.join(command)}\n")
+        if timeout_seconds is not None:
+            log_file.write(f"[runner] timeout_seconds={timeout_seconds}\n")
         log_file.flush()
 
         try:
@@ -171,11 +201,43 @@ def main() -> int:
             mark_job_failed(job_path, job, str(exc))
             return 1
 
-        return_code = process.wait()
+        timed_out = False
+
+        try:
+            if timeout_seconds is None:
+                return_code = process.wait()
+            else:
+                return_code = process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            log_file.write(f"[runner] timeout_exceeded={timeout_seconds}\n")
+            log_file.write("[runner] sending_signal=SIGTERM\n")
+            log_file.flush()
+
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+            try:
+                return_code = process.wait(timeout=TIMEOUT_GRACE_SECONDS)
+            except subprocess.TimeoutExpired:
+                log_file.write("[runner] sending_signal=SIGKILL\n")
+                log_file.flush()
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                return_code = process.wait()
+
+        if timed_out:
+            return_code = 124
 
     job["finished_at"] = now_iso()
     job["exit_code"] = return_code
     job["status"] = "completed" if return_code == 0 else "failed"
+    if return_code == 124:
+        job["error"] = "Yedekleme süresi sınırı aşıldı."
     write_json(job_path, job)
     return return_code
 
