@@ -2,7 +2,7 @@
 
 Bu belge, projeyi GitHub'a yayinlamak ve daha sonra sunucuda kullanmak icin gereken temel adimlari icerir.
 
-Publisher ve proje sahibi: [ademyuce.tr](https://ademyuce.tr)
+Publisher ve proje sahibi: [Adem YÜCE](https://ademyuce.tr) - [ademyuce.tr](https://ademyuce.tr)
 
 ## Onerilen repo bilgileri
 

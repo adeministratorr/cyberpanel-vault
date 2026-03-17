@@ -2,7 +2,7 @@
 
 CyberPanel Vault is a server-level backup and restore toolkit for CyberPanel deployments. It combines weekly full backups, incremental backup chains, encrypted Google Drive uploads through `rclone`, and a CyberPanel-ready management UI for running backup and restore jobs.
 
-Project website and publisher: [ademyuce.tr](https://ademyuce.tr)
+Project website and publisher: [Adem YÜCE](https://ademyuce.tr) - [ademyuce.tr](https://ademyuce.tr)
 GitHub Pages: [adeministratorr.github.io/cyberpanel-vault](https://adeministratorr.github.io/cyberpanel-vault/)
 
 Suggested GitHub repository name: `cyberpanel-vault`

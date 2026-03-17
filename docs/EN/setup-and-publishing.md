@@ -2,7 +2,7 @@
 
 This document explains how to publish the project to GitHub and prepare it for server deployment.
 
-Publisher and project owner: [ademyuce.tr](https://ademyuce.tr)
+Publisher and project owner: [Adem YÜCE](https://ademyuce.tr) - [ademyuce.tr](https://ademyuce.tr)
 
 ## Recommended repository identity
 
