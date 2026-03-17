@@ -3,7 +3,7 @@ from functools import wraps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.views import redirect_to_login
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
@@ -89,6 +89,12 @@ def jobs_api(request: HttpRequest) -> JsonResponse:
 
 @admin_required
 @require_GET
+def dashboard_api(request: HttpRequest) -> JsonResponse:
+    return JsonResponse(services.dashboard_state())
+
+
+@admin_required
+@require_GET
 def job_detail_api(request: HttpRequest, job_id: str) -> JsonResponse:
     try:
         job = services.get_job(job_id)
@@ -105,6 +111,20 @@ def job_log_api(request: HttpRequest, job_id: str) -> JsonResponse:
     except services.ServiceError as exc:
         return JsonResponse({"error": str(exc)}, status=404)
     return JsonResponse({"job": job, "log": services.read_job_log(job_id)})
+
+
+@admin_required
+@require_GET
+def job_log_download(request: HttpRequest, job_id: str) -> HttpResponse:
+    try:
+        services.get_job(job_id)
+        log_path = services.get_job_log_path(job_id)
+    except services.ServiceError as exc:
+        return JsonResponse({"error": str(exc)}, status=404)
+
+    response = FileResponse(log_path.open("rb"), content_type="text/plain; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{job_id}.log"'
+    return response
 
 
 @admin_required

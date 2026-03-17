@@ -257,6 +257,66 @@
             margin-bottom: 18px;
         }
 
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .summary-card {
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 16px;
+            background: var(--panel-soft);
+        }
+
+        .summary-card h3 {
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .summary-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--ink);
+            line-height: 1.2;
+        }
+
+        .summary-note {
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .progress {
+            display: grid;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .progress-bar {
+            height: 10px;
+            border-radius: 999px;
+            background: rgba(16, 35, 58, 0.08);
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, var(--accent), #17b3d6);
+            transition: width 0.25s ease;
+        }
+
+        .progress-meta {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
         .message {
             padding: 12px 14px;
             border-radius: 12px;
@@ -265,9 +325,36 @@
             box-shadow: var(--shadow);
         }
 
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .button-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            padding: 11px 16px;
+            font-size: 14px;
+            font-weight: 700;
+            text-decoration: none;
+            border: 1px solid var(--line);
+            background: var(--panel-soft);
+            color: var(--ink);
+        }
+
+        .button-link[aria-disabled="true"] {
+            pointer-events: none;
+            opacity: 0.5;
+        }
+
         @media (max-width: 980px) {
             .hero,
-            .grid {
+            .grid,
+            .summary-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -334,6 +421,55 @@
             </div>
         </section>
 
+        <section class="summary-grid">
+            <div class="panel">
+                <h3>Son Başarılı Yedek</h3>
+                <div class="summary-value" id="latest-backup-value">
+                    {% if latest_backup_summary %}{{ latest_backup_summary.latest_timestamp }}{% else %}Henüz yok{% endif %}
+                </div>
+                <div class="summary-note" id="latest-backup-note">
+                    {% if latest_backup_summary %}
+                        {{ latest_backup_summary.latest_kind|upper }} | Zincir: {{ latest_backup_summary.chain_id }} | Parça: {{ latest_backup_summary.backup_count }}
+                    {% else %}
+                        Google Drive üzerinde bu sunucuya ait tamamlanmış yedek görünmüyor.
+                    {% endif %}
+                </div>
+            </div>
+            <div class="panel">
+                <h3>Canlı İş Durumu</h3>
+                <div class="summary-value" id="active-job-value">
+                    {% if active_job_summary %}{{ active_job_summary.type|upper }}{% else %}Bekleyen iş yok{% endif %}
+                </div>
+                <div class="summary-note" id="active-job-note">
+                    {% if active_job_summary %}
+                        {{ active_job_summary.progress_label }}
+                    {% else %}
+                        Şu anda çalışan ya da sırada bekleyen bir iş görünmüyor.
+                    {% endif %}
+                </div>
+                <div class="progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="active-job-progress" style="width: {% if active_job_summary %}{{ active_job_summary.progress_percent }}{% else %}0{% endif %}%"></div>
+                    </div>
+                    <div class="progress-meta">
+                        <span id="active-job-status">{% if active_job_summary %}{{ active_job_summary.status }}{% else %}idle{% endif %}</span>
+                        <span id="active-job-percent">{% if active_job_summary %}{{ active_job_summary.progress_percent }}{% else %}0{% endif %}%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="panel">
+                <h3>Uzak Yedek Özeti</h3>
+                <div class="summary-value" id="remote-summary-value">{{ backups|length }}</div>
+                <div class="summary-note" id="remote-summary-note">
+                    {% if remote_error %}
+                        {{ remote_error }}
+                    {% else %}
+                        Bu sunucuya ait uzak zincir sayısı
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+
         <section class="grid">
             <div class="panel stack">
                 <h2>Uzak Yedek Zincirleri</h2>
@@ -347,7 +483,7 @@
                             <th>Hedef</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="backups-body">
                         {% for chain in backups %}
                             <tr>
                                 <td>
@@ -403,7 +539,7 @@
 
         <section class="grid" style="margin-top: 24px;">
             <div class="panel stack">
-                <div class="row">
+                <div class="toolbar">
                     <h2 style="margin-bottom: 0;">Son İşler</h2>
                     <button class="secondary" type="button" id="refresh-jobs">Yenile</button>
                 </div>
@@ -422,8 +558,21 @@
                             {% if job.meta.mode %}
                                 <div class="meta">Mod: {{ job.meta.mode }}</div>
                             {% endif %}
-                            <div class="row">
+                            <div class="progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: {{ job.progress_percent }}%"></div>
+                                </div>
+                                <div class="progress-meta">
+                                    <span>{{ job.progress_label }}</span>
+                                    <span>{{ job.progress_percent }}%</span>
+                                </div>
+                            </div>
+                            {% if job.last_log_line %}
+                                <div class="meta">{{ job.last_log_line }}</div>
+                            {% endif %}
+                            <div class="toolbar">
                                 <button class="secondary log-button" type="button" data-job-id="{{ job.id }}">Günlüğü Aç</button>
+                                <a class="button-link" href="{% url 'serverBackupManager:job_log_download' job.id %}">Logu İndir</a>
                             </div>
                         </article>
                     {% empty %}
@@ -433,7 +582,10 @@
             </div>
 
             <div class="panel stack">
-                <h2>İş Günlüğü</h2>
+                <div class="toolbar">
+                    <h2 style="margin-bottom: 0;">İş Günlüğü</h2>
+                    <a class="button-link" id="download-log" href="#" aria-disabled="true">Logu İndir</a>
+                </div>
                 <div class="meta" id="log-meta">Bir iş seçin.</div>
                 <pre class="logbox" id="job-log">Günlük burada görünecek.</pre>
             </div>
@@ -442,95 +594,284 @@
 
     <script>
         const logBaseUrl = "{% url 'serverBackupManager:index' %}api/jobs/";
+        const dashboardUrl = "{% url 'serverBackupManager:dashboard_api' %}";
         const jobsContainer = document.getElementById("jobs");
         const logBox = document.getElementById("job-log");
         const logMeta = document.getElementById("log-meta");
         const targetInput = document.getElementById("target_file");
+        const backupsBody = document.getElementById("backups-body");
+        const downloadLogButton = document.getElementById("download-log");
+        let selectedJobId = "";
 
-        document.querySelectorAll(".target-file-select").forEach((select) => {
-            select.addEventListener("change", () => {
-                targetInput.value = select.value;
-            });
-            if (!targetInput.value) {
-                targetInput.value = select.value;
-            }
-        });
-
-        async function loadJobs() {
-            const response = await fetch("{% url 'serverBackupManager:jobs_api' %}", {headers: {"Accept": "application/json"}});
-            if (!response.ok) {
-                return;
-            }
-            const payload = await response.json();
-            jobsContainer.innerHTML = "";
-            payload.jobs.forEach((job) => {
-                const article = document.createElement("article");
-                article.className = "job";
-                article.dataset.status = job.status;
-
-                const header = document.createElement("div");
-                header.className = "row";
-
-                const title = document.createElement("strong");
-                title.textContent = (job.type || "").toUpperCase();
-                header.appendChild(title);
-
-                const status = document.createElement("span");
-                status.className = "pill";
-                status.textContent = job.status || "";
-                header.appendChild(status);
-
-                const createdAt = document.createElement("span");
-                createdAt.className = "meta";
-                createdAt.textContent = job.created_at || "";
-                header.appendChild(createdAt);
-
-                article.appendChild(header);
-
-                const idMeta = document.createElement("div");
-                idMeta.className = "meta";
-                idMeta.textContent = `ID: ${job.id || ""}`;
-                article.appendChild(idMeta);
-
-                if (job.meta && job.meta.target_file) {
-                    const targetMeta = document.createElement("div");
-                    targetMeta.className = "meta";
-                    targetMeta.textContent = `Hedef: ${job.meta.target_file}`;
-                    article.appendChild(targetMeta);
+        function bindTargetSelects() {
+            document.querySelectorAll(".target-file-select").forEach((select) => {
+                select.addEventListener("change", () => {
+                    targetInput.value = select.value;
+                });
+                if (!targetInput.value) {
+                    targetInput.value = select.value;
                 }
-
-                if (job.meta && job.meta.mode) {
-                    const modeMeta = document.createElement("div");
-                    modeMeta.className = "meta";
-                    modeMeta.textContent = `Mod: ${job.meta.mode}`;
-                    article.appendChild(modeMeta);
-                }
-
-                const actions = document.createElement("div");
-                actions.className = "row";
-
-                const button = document.createElement("button");
-                button.className = "secondary log-button";
-                button.type = "button";
-                button.dataset.jobId = job.id || "";
-                button.textContent = "Günlüğü Aç";
-                actions.appendChild(button);
-
-                article.appendChild(actions);
-                jobsContainer.appendChild(article);
             });
         }
 
-        async function loadLog(jobId) {
-            const response = await fetch(`${logBaseUrl}${jobId}/log/`, {headers: {"Accept": "application/json"}});
-            if (!response.ok) {
-                logMeta.textContent = "Günlük okunamadı.";
-                logBox.textContent = "";
+        bindTargetSelects();
+
+        function setDownloadLink(jobId) {
+            if (!jobId) {
+                downloadLogButton.setAttribute("aria-disabled", "true");
+                downloadLogButton.setAttribute("href", "#");
                 return;
             }
-            const payload = await response.json();
-            logMeta.textContent = `${payload.job.type.toUpperCase()} | ${payload.job.status} | ${payload.job.id}`;
-            logBox.textContent = payload.log || "Günlük kaydı yok.";
+
+            downloadLogButton.removeAttribute("aria-disabled");
+            downloadLogButton.setAttribute("href", `${logBaseUrl}${jobId}/log/download/`);
+        }
+
+        function renderSummary(payload) {
+            const latestBackupValue = document.getElementById("latest-backup-value");
+            const latestBackupNote = document.getElementById("latest-backup-note");
+            const activeJobValue = document.getElementById("active-job-value");
+            const activeJobNote = document.getElementById("active-job-note");
+            const activeJobProgress = document.getElementById("active-job-progress");
+            const activeJobStatus = document.getElementById("active-job-status");
+            const activeJobPercent = document.getElementById("active-job-percent");
+            const remoteSummaryValue = document.getElementById("remote-summary-value");
+            const remoteSummaryNote = document.getElementById("remote-summary-note");
+
+            if (payload.latest_backup_summary) {
+                latestBackupValue.textContent = payload.latest_backup_summary.latest_timestamp;
+                latestBackupNote.textContent = `${payload.latest_backup_summary.latest_kind.toUpperCase()} | Zincir: ${payload.latest_backup_summary.chain_id} | Parça: ${payload.latest_backup_summary.backup_count}`;
+            } else {
+                latestBackupValue.textContent = "Henüz yok";
+                latestBackupNote.textContent = "Google Drive üzerinde bu sunucuya ait tamamlanmış yedek görünmüyor.";
+            }
+
+            if (payload.active_job_summary) {
+                activeJobValue.textContent = (payload.active_job_summary.type || "").toUpperCase();
+                activeJobNote.textContent = payload.active_job_summary.progress_label || "";
+                activeJobProgress.style.width = `${payload.active_job_summary.progress_percent || 0}%`;
+                activeJobStatus.textContent = payload.active_job_summary.status || "";
+                activeJobPercent.textContent = `${payload.active_job_summary.progress_percent || 0}%`;
+            } else {
+                activeJobValue.textContent = "Bekleyen iş yok";
+                activeJobNote.textContent = "Şu anda çalışan ya da sırada bekleyen bir iş görünmüyor.";
+                activeJobProgress.style.width = "0%";
+                activeJobStatus.textContent = "idle";
+                activeJobPercent.textContent = "0%";
+            }
+
+            remoteSummaryValue.textContent = Array.isArray(payload.backups) ? String(payload.backups.length) : "0";
+            remoteSummaryNote.textContent = payload.remote_error || "Bu sunucuya ait uzak zincir sayısı";
+        }
+
+        function renderBackups(backups) {
+            backupsBody.innerHTML = "";
+
+            if (!backups || backups.length === 0) {
+                const row = document.createElement("tr");
+                const cell = document.createElement("td");
+                cell.colSpan = 4;
+                cell.textContent = "Henüz yedek bulunamadı.";
+                row.appendChild(cell);
+                backupsBody.appendChild(row);
+                return;
+            }
+
+            backups.forEach((chain) => {
+                const row = document.createElement("tr");
+
+                const chainCell = document.createElement("td");
+                const strong = document.createElement("strong");
+                strong.textContent = chain.chain_id || "";
+                chainCell.appendChild(strong);
+                chainCell.appendChild(document.createElement("br"));
+                const meta = document.createElement("span");
+                meta.className = "meta";
+                meta.textContent = `İlk parça: ${chain.full_timestamp || ""}`;
+                chainCell.appendChild(meta);
+                row.appendChild(chainCell);
+
+                const countCell = document.createElement("td");
+                countCell.textContent = String(chain.backup_count || 0);
+                row.appendChild(countCell);
+
+                const latestCell = document.createElement("td");
+                latestCell.textContent = chain.latest_timestamp || "";
+                row.appendChild(latestCell);
+
+                const targetCell = document.createElement("td");
+                const select = document.createElement("select");
+                select.className = "target-file-select";
+                (chain.backups || []).forEach((backup) => {
+                    const option = document.createElement("option");
+                    option.value = backup.file || "";
+                    option.textContent = `${(backup.kind || "").toUpperCase()} @ ${backup.timestamp || ""}`;
+                    select.appendChild(option);
+                });
+                targetCell.appendChild(select);
+                row.appendChild(targetCell);
+
+                backupsBody.appendChild(row);
+            });
+
+            bindTargetSelects();
+        }
+
+        function buildJobCard(job) {
+            const article = document.createElement("article");
+            article.className = "job";
+            article.dataset.status = job.status;
+
+            const header = document.createElement("div");
+            header.className = "row";
+
+            const title = document.createElement("strong");
+            title.textContent = (job.type || "").toUpperCase();
+            header.appendChild(title);
+
+            const status = document.createElement("span");
+            status.className = "pill";
+            status.textContent = job.status || "";
+            header.appendChild(status);
+
+            const createdAt = document.createElement("span");
+            createdAt.className = "meta";
+            createdAt.textContent = job.created_at || "";
+            header.appendChild(createdAt);
+
+            article.appendChild(header);
+
+            const idMeta = document.createElement("div");
+            idMeta.className = "meta";
+            idMeta.textContent = `ID: ${job.id || ""}`;
+            article.appendChild(idMeta);
+
+            if (job.meta && job.meta.target_file) {
+                const targetMeta = document.createElement("div");
+                targetMeta.className = "meta";
+                targetMeta.textContent = `Hedef: ${job.meta.target_file}`;
+                article.appendChild(targetMeta);
+            }
+
+            if (job.meta && job.meta.mode) {
+                const modeMeta = document.createElement("div");
+                modeMeta.className = "meta";
+                modeMeta.textContent = `Mod: ${job.meta.mode}`;
+                article.appendChild(modeMeta);
+            }
+
+            const progress = document.createElement("div");
+            progress.className = "progress";
+
+            const progressBar = document.createElement("div");
+            progressBar.className = "progress-bar";
+            const progressFill = document.createElement("div");
+            progressFill.className = "progress-fill";
+            progressFill.style.width = `${job.progress_percent || 0}%`;
+            progressBar.appendChild(progressFill);
+            progress.appendChild(progressBar);
+
+            const progressMeta = document.createElement("div");
+            progressMeta.className = "progress-meta";
+            const progressLabel = document.createElement("span");
+            progressLabel.textContent = job.progress_label || "";
+            const progressPercent = document.createElement("span");
+            progressPercent.textContent = `${job.progress_percent || 0}%`;
+            progressMeta.appendChild(progressLabel);
+            progressMeta.appendChild(progressPercent);
+            progress.appendChild(progressMeta);
+            article.appendChild(progress);
+
+            if (job.last_log_line) {
+                const lastLogLine = document.createElement("div");
+                lastLogLine.className = "meta";
+                lastLogLine.textContent = job.last_log_line;
+                article.appendChild(lastLogLine);
+            }
+
+            const actions = document.createElement("div");
+            actions.className = "toolbar";
+
+            const logButton = document.createElement("button");
+            logButton.className = "secondary log-button";
+            logButton.type = "button";
+            logButton.dataset.jobId = job.id || "";
+            logButton.textContent = "Günlüğü Aç";
+            actions.appendChild(logButton);
+
+            const downloadLink = document.createElement("a");
+            downloadLink.className = "button-link";
+            downloadLink.href = `${logBaseUrl}${job.id || ""}/log/download/`;
+            downloadLink.textContent = "Logu İndir";
+            actions.appendChild(downloadLink);
+
+            article.appendChild(actions);
+            return article;
+        }
+
+        function renderJobs(jobs) {
+            jobsContainer.innerHTML = "";
+
+            if (!jobs || jobs.length === 0) {
+                const empty = document.createElement("div");
+                empty.className = "meta";
+                empty.textContent = "Henüz iş kaydı yok.";
+                jobsContainer.appendChild(empty);
+                return;
+            }
+
+            jobs.forEach((job) => {
+                jobsContainer.appendChild(buildJobCard(job));
+            });
+        }
+
+        async function loadDashboard() {
+            try {
+                const response = await fetch(dashboardUrl, {headers: {"Accept": "application/json"}});
+                if (!response.ok) {
+                    return;
+                }
+
+                const payload = await response.json();
+                renderSummary(payload);
+                renderBackups(payload.backups || []);
+                renderJobs(payload.jobs || []);
+
+                if (selectedJobId) {
+                    const selectedStillExists = (payload.jobs || []).some((job) => job.id === selectedJobId);
+                    if (!selectedStillExists) {
+                        selectedJobId = "";
+                        setDownloadLink("");
+                    }
+                }
+            } catch (error) {
+                console.error("Dashboard verisi alınamadı.", error);
+            }
+        }
+
+        setDownloadLink("");
+
+        async function loadLog(jobId) {
+            try {
+                const response = await fetch(`${logBaseUrl}${jobId}/log/`, {headers: {"Accept": "application/json"}});
+                if (!response.ok) {
+                    logMeta.textContent = "Günlük okunamadı.";
+                    logBox.textContent = "";
+                    setDownloadLink("");
+                    return;
+                }
+
+                const payload = await response.json();
+                selectedJobId = jobId;
+                setDownloadLink(jobId);
+                logMeta.textContent = `${payload.job.type.toUpperCase()} | ${payload.job.status} | ${payload.job.id}`;
+                logBox.textContent = payload.log || "Günlük kaydı yok.";
+            } catch (error) {
+                logMeta.textContent = "Günlük okunamadı.";
+                logBox.textContent = "";
+                setDownloadLink("");
+                console.error("İş günlüğü alınamadı.", error);
+            }
         }
 
         jobsContainer.addEventListener("click", (event) => {
@@ -542,10 +883,16 @@
         });
 
         document.getElementById("refresh-jobs").addEventListener("click", () => {
-            loadJobs();
+            loadDashboard();
         });
 
-        setInterval(loadJobs, 10000);
+        loadDashboard();
+        setInterval(loadDashboard, 10000);
+        setInterval(() => {
+            if (selectedJobId) {
+                loadLog(selectedJobId);
+            }
+        }, 5000);
     </script>
 </body>
 </html>

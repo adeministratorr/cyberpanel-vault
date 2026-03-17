@@ -32,6 +32,33 @@ JOB_ID_RE = re.compile(r"^\d{8}T\d{6}-[0-9a-f]{8}$")
 ALLOWED_BACKUP_MODES = {"auto", "full", "incremental"}
 ACTIVE_JOB_STATUSES = {"queued", "running"}
 ALLOWED_RUNNER_MODES = {"auto", "direct", "sudo"}
+BACKUP_PROGRESS_STEPS = [
+    ("Yedekleme basladi:", 8, "İş başlatıldı"),
+    ("Veritabanlari yedekleniyor...", 18, "Veritabanı dökümü alınıyor"),
+    ("Veritabanlari yedeklendi.", 28, "Veritabanı tamamlandı"),
+    ("paketleme listesine eklendi.", 38, "Dosyalar hazırlanıyor"),
+    ("Yedek paketi olusturuluyor...", 50, "Arşiv hazırlanıyor"),
+    ("Paketleme tamamlandi:", 62, "Arşiv oluşturuldu"),
+    ("Arsiv sifreleniyor...", 72, "Şifreleme yapılıyor"),
+    ("Arsiv sifrelendi:", 80, "Şifreleme tamamlandı"),
+    ("SHA256 ozeti olusturuldu.", 86, "Doğrulama özeti hazır"),
+    ("Google Drive'a arsiv yukleniyor...", 92, "Google Drive'a yükleniyor"),
+    ("Checksum yuklemesi tamamlandi.", 97, "Doğrulama özeti yüklendi"),
+    ("Backup state guncellendi.", 99, "Durum kaydediliyor"),
+    ("Yedekleme basariyla tamamlandi.", 100, "Tamamlandı"),
+]
+RESTORE_PROGRESS_STEPS = [
+    ("Restore zinciri bulundu:", 12, "Zincir bulundu"),
+    ("Indiriliyor:", 28, "Yedek dosyaları indiriliyor"),
+    ("Checksum dogrulaniyor:", 42, "Bütünlük kontrolü yapılıyor"),
+    ("Sifre cozuluyor:", 55, "Arşiv açılıyor"),
+    ("Arsiv uygulaniyor:", 68, "Yedek arşivleri uygulanıyor"),
+    ("Veritabani geri yukleniyor...", 78, "Veritabanı geri yükleniyor"),
+    ("Veritabani geri yuklendi.", 84, "Veritabanı tamamlandı"),
+    ("Dizin restore edildi:", 90, "Dosyalar geri yükleniyor"),
+    ("Servisler yeniden baslatiliyor...", 96, "Servisler yeniden başlatılıyor"),
+    ("Restore basariyla tamamlandi.", 100, "Tamamlandı"),
+]
 
 
 class ServiceError(RuntimeError):
@@ -81,6 +108,13 @@ def _read_job_record(job_id: str) -> dict[str, Any]:
 
 
 def _public_job_view(job: dict[str, Any]) -> dict[str, Any]:
+    log_content = ""
+    try:
+        log_content = read_job_log(str(job.get("id", "")))
+    except ServiceError:
+        log_content = ""
+
+    progress = _job_progress(job, log_content)
     return {
         "id": job.get("id", ""),
         "type": job.get("type", ""),
@@ -90,7 +124,47 @@ def _public_job_view(job: dict[str, Any]) -> dict[str, Any]:
         "finished_at": job.get("finished_at", ""),
         "exit_code": job.get("exit_code"),
         "meta": job.get("meta", {}),
+        "progress_percent": progress["percent"],
+        "progress_label": progress["label"],
+        "last_log_line": _last_log_line(log_content),
     }
+
+
+def _last_log_line(log_content: str) -> str:
+    if not log_content:
+        return ""
+
+    for line in reversed(log_content.splitlines()):
+        clean = line.strip()
+        if clean:
+            return clean
+    return ""
+
+
+def _job_progress(job: dict[str, Any], log_content: str) -> dict[str, Any]:
+    status = str(job.get("status", ""))
+    job_type = str(job.get("type", ""))
+    progress_steps = BACKUP_PROGRESS_STEPS if job_type == "backup" else RESTORE_PROGRESS_STEPS
+
+    if status == "queued":
+        return {"percent": 5, "label": "Sırada bekliyor"}
+
+    percent = 10 if status == "running" else 100
+    label = "Hazırlanıyor" if status == "running" else "Tamamlandı"
+
+    for marker, step_percent, step_label in progress_steps:
+        if marker in log_content:
+            percent = step_percent
+            label = step_label
+
+    if status == "failed":
+        if percent >= 100:
+            percent = 100
+        elif percent < 15:
+            percent = 15
+        label = f"{label} aşamasında durdu"
+
+    return {"percent": min(max(percent, 0), 100), "label": label}
 
 
 def _has_active_jobs() -> bool:
@@ -285,6 +359,13 @@ def read_job_log(job_id: str, max_chars: int = 20000) -> str:
     return content
 
 
+def get_job_log_path(job_id: str) -> Path:
+    log_path = _log_file(job_id)
+    if not log_path.exists():
+        raise ServiceError("İş günlüğü bulunamadı.")
+    return log_path
+
+
 def list_remote_backups() -> list[dict[str, Any]]:
     ensure_runtime_dirs()
 
@@ -339,7 +420,38 @@ def list_remote_backups() -> list[dict[str, Any]]:
     return sorted(chains.values(), key=lambda item: item["latest_timestamp"], reverse=True)
 
 
-def dashboard_context() -> dict[str, Any]:
+def latest_backup_summary(backups: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not backups:
+        return None
+
+    latest_chain = backups[0]
+    latest_item = latest_chain["backups"][-1]
+    return {
+        "chain_id": latest_chain["chain_id"],
+        "backup_count": latest_chain["backup_count"],
+        "latest_file": latest_item["file"],
+        "latest_timestamp": latest_item["timestamp"],
+        "latest_kind": latest_item["kind"],
+        "full_timestamp": latest_chain["full_timestamp"],
+    }
+
+
+def active_job_summary(jobs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for job in jobs:
+        if job.get("status") in ACTIVE_JOB_STATUSES:
+            return {
+                "id": job.get("id", ""),
+                "type": job.get("type", ""),
+                "status": job.get("status", ""),
+                "progress_percent": job.get("progress_percent", 0),
+                "progress_label": job.get("progress_label", ""),
+            }
+    return None
+
+
+def dashboard_state() -> dict[str, Any]:
+    jobs = list_jobs()
+
     try:
         backups = list_remote_backups()
         remote_error = ""
@@ -348,9 +460,23 @@ def dashboard_context() -> dict[str, Any]:
         remote_error = str(exc)
 
     return {
+        "jobs": jobs,
         "backups": backups,
         "remote_error": remote_error,
-        "jobs": list_jobs(),
+        "latest_backup_summary": latest_backup_summary(backups),
+        "active_job_summary": active_job_summary(jobs),
+    }
+
+
+def dashboard_context() -> dict[str, Any]:
+    state = dashboard_state()
+
+    return {
+        "backups": state["backups"],
+        "remote_error": state["remote_error"],
+        "jobs": state["jobs"],
+        "latest_backup_summary": state["latest_backup_summary"],
+        "active_job_summary": state["active_job_summary"],
         "host_fqdn": HOST_FQDN,
         "host_slug": HOST_SLUG,
         "backup_script": str(BACKUP_SCRIPT),
