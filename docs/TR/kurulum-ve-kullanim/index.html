@@ -183,18 +183,122 @@ BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
         <li><code>--keep-workdir</code></li>
       </ul>
 
-      <h2>CyberPanel arayüzüne bağlama</h2>
-      <p><code>serverBackupManager/</code> dizini, CyberPanel içine eklenebilecek bir Django uygulama iskeletidir.</p>
-      <p>Temel bağlantı adımları:</p>
-      <ol>
-        <li>Dizini CyberPanel'in Django kod tabanına ekleyin.</li>
-        <li><code>urls.py</code> içindeki yolları panelin mevcut URL yapısına bağlayın.</li>
-        <li>Gerekli ortam değişkenlerini tanımlayın.</li>
-      </ol>
+      <h2>Server Backup Manager kurulumu ve kullanımı</h2>
+      <p><code>serverBackupManager/</code> klasörü, doğrudan CyberPanel içine bağlanabilecek bir Django uygulama iskeletidir. Yani bu bölüm, normal shell script kurulumundan farklıdır; panelin Python tarafına dosya eklemeniz gerekir.</p>
+
+      <h3>Bu bölüm ne işe yarar?</h3>
+      <p>Server Backup Manager kurulduğunda yedekleme ve geri yükleme işlemlerini terminal yerine panel benzeri bir ekrandan yönetebilirsiniz. Bu ekran şunları yapar:</p>
+      <ul>
+        <li>Tam, artımlı veya otomatik yedek başlatır.</li>
+        <li>Google Drive üzerindeki bu sunucuya ait yedek zincirlerini listeler.</li>
+        <li>Seçilen zincir için geri yükleme işi başlatır.</li>
+        <li>Son işleri ve günlük kayıtlarını ekranda gösterir.</li>
+      </ul>
+
+      <h3>Kuruluma başlamadan önce bilinmesi gerekenler</h3>
+      <ul>
+        <li>Önce shell script tarafı çalışıyor olmalıdır. Yani <code>cyberpanel_full_backup.sh</code> ve <code>cyberpanel_restore.sh</code> kurulu olmalı.</li>
+        <li>Google Drive bağlantısı hazır olmalıdır. Bunun için <code>rclone lsd gdrive:</code> komutu hata vermemeli.</li>
+        <li>Bu bölüm, CyberPanel'in Django yapısına dosya eklemeyi gerektirir. Yani sadece kopyala ve çalıştır mantığında değildir.</li>
+        <li>Bu ekranı kullanacak kişinin panelde yönetici yetkisi olmalıdır.</li>
+      </ul>
+
+      <h3>1. Uygulama klasörünü CyberPanel kod tabanına kopyalayın</h3>
+      <p>Önce bu repo içindeki <code>serverBackupManager/</code> klasörünü, CyberPanel'in Django uygulamalarının bulunduğu yere kopyalayın. Hedef klasör sizin sunucunuzdaki CyberPanel kurulumuna göre değişebilir. Mantık şudur: Bu klasör, diğer Django app'lerin durduğu yerde olmalıdır.</p>
+      <pre><code>cp -a /opt/cyberpanel-vault/serverBackupManager /CYBERPANEL_DJANGO_KLASORU/serverBackupManager</code></pre>
+      <p><code>/CYBERPANEL_DJANGO_KLASORU</code> kısmını kendi sunucunuzdaki gerçek klasörle değiştirin.</p>
+
+      <h3>2. Uygulamayı Django ayarlarına ekleyin</h3>
+      <p>CyberPanel'in <code>settings.py</code> dosyasında <code>INSTALLED_APPS</code> listesine şu satırı ekleyin:</p>
+      <pre><code>'serverBackupManager.apps.ServerBackupManagerConfig',</code></pre>
+      <p>Bu satır eklenmezse Django uygulamayı tanımaz.</p>
+
+      <h3>3. URL bağlantısını ekleyin</h3>
+      <p>CyberPanel'in ana <code>urls.py</code> dosyasında <code>include</code> kullanarak bu uygulamanın yollarını bağlayın.</p>
+      <pre><code>from django.urls import include, path
+
+urlpatterns = [
+    # diğer yollar
+    path("server-backup/", include("serverBackupManager.urls")),
+]</code></pre>
+      <p>Bu örnekte ekran şu adreste açılır: <code>/server-backup/</code></p>
+
+      <h3>4. Gerekli ortam değişkenlerini tanımlayın</h3>
+      <p>Panelin web süreci, hangi backup ve restore betiğini çağıracağını bu değişkenlerden öğrenir. En az şu üç değişkeni tanımlayın:</p>
       <pre><code>export CYBERPANEL_SERVER_BACKUP_SCRIPT=/usr/local/bin/cyberpanel_full_backup.sh
 export CYBERPANEL_SERVER_RESTORE_SCRIPT=/usr/local/bin/cyberpanel_restore.sh
 export CYBERPANEL_SERVER_BACKUP_UI_STATE_DIR=/var/lib/cyberpanel-backup-ui</code></pre>
-      <p>Web sürecinin arka planda iş başlatabildiğinden ve sunucuda <code>rclone</code> erişimi olduğundan emin olun.</p>
+      <p>Bu değişkenler, web sürecisinin gördüğü ortamda tanımlı olmalıdır. Sadece terminalde yazmanız her zaman yeterli olmaz. CyberPanel hangi servisle çalışıyorsa, bu değişkenlerin o servise de verilmesi gerekir.</p>
+
+      <h3>5. State klasörünü oluşturun</h3>
+      <p>Arayüz, iş kayıtlarını ve log dosyalarını burada tutar:</p>
+      <pre><code>mkdir -p /var/lib/cyberpanel-backup-ui/jobs
+chmod 700 /var/lib/cyberpanel-backup-ui /var/lib/cyberpanel-backup-ui/jobs</code></pre>
+
+      <h3>6. Web sürecisini yeniden başlatın</h3>
+      <p><code>settings.py</code>, <code>urls.py</code> ve ortam değişkenleri eklendikten sonra CyberPanel'in web tarafını yeniden başlatmanız gerekir. Hangi servis kullanılıyorsa onu yeniden başlatın.</p>
+      <p>Bu adım sunucudan sunucuya değiştiği için tek bir komut vermek doğru olmaz. Ama mantık aynıdır: Django tarafı yeniden yüklenmelidir.</p>
+
+      <h3>7. Sayfanın açıldığını kontrol edin</h3>
+      <p>Tarayıcıdan eklediğiniz yolu açın. Örneğin üstteki örneği kullandıysanız:</p>
+      <pre><code>https://panel-adresiniz/server-backup/</code></pre>
+      <p>Bu sayfayı açarken yönetici hesabıyla oturum açmış olmanız gerekir.</p>
+      <p>Sayfa açıldığında şunları görmeniz gerekir:</p>
+      <ul>
+        <li>Sunucu adı</li>
+        <li>Yedekleme başlatma alanı</li>
+        <li>Uzak yedek zincirleri tablosu</li>
+        <li>Geri yükleme formu</li>
+        <li>Son işler ve günlük bölümü</li>
+      </ul>
+
+      <h3>Server Backup Manager nasıl kullanılır?</h3>
+      <p>Kurulum tamamlandıktan sonra günlük kullanım oldukça basittir.</p>
+
+      <h3>1. Yeni yedek başlatma</h3>
+      <p>Sayfadaki <strong>Yedekleme Başlat</strong> alanında mod seçin:</p>
+      <ul>
+        <li><code>Otomatik</code>: Haftalık tam, diğer günler artımlı çalışır.</li>
+        <li><code>Tam</code>: O anda yeni bir tam yedek alır.</li>
+        <li><code>Artımlı</code>: Son tam yedeğin üstüne artımlı yedek alır.</li>
+      </ul>
+      <p>Ardından <strong>Yedeklemeyi Başlat</strong> düğmesine basın. İş arka planda başlar.</p>
+
+      <h3>2. Yedeklerin durumunu izleme</h3>
+      <p>Sayfanın alt kısmındaki <strong>Son İşler</strong> alanında başlatılan işleri görürsünüz. Burada işin:</p>
+      <ul>
+        <li>tipi</li>
+        <li>durumu</li>
+        <li>başlama zamanı</li>
+      </ul>
+      <p>yer alır. <strong>Günlüğü Aç</strong> düğmesine basarsanız işlem çıktısını ekranda görürsünüz.</p>
+
+      <h3>3. Geri yükleme başlatma</h3>
+      <p><strong>Uzak Yedek Zincirleri</strong> bölümünde Google Drive üzerindeki bu sunucuya ait yedekler listelenir. Buradan bir hedef seçin. Seçtiğiniz dosya otomatik olarak geri yükleme kutusuna gelir.</p>
+      <p>Sonra şu adımları izleyin:</p>
+      <ol>
+        <li><strong>Hedef yedek</strong> alanının dolu olduğunu kontrol edin.</li>
+        <li><strong>Onay için sunucunun FQDN değerini yazın</strong> alanına sunucunun tam adını yazın.</li>
+        <li>Gerekirse <code>Veritabanını atla</code>, <code>Dosyaları atla</code> gibi seçenekleri kullanın.</li>
+        <li><strong>Geri Yüklemeyi Başlat</strong> düğmesine basın.</li>
+      </ol>
+      <p>Bu işlem canlı sisteme yazdığı için dikkatli kullanılmalıdır.</p>
+
+      <h3>4. İlk kullanımda güvenli test önerisi</h3>
+      <p>Arayüzü doğrudan üretim sunucusunda denemek yerine önce küçük bir test yapın:</p>
+      <ul>
+        <li>Önce panelden bir tam yedek başlatın.</li>
+        <li>İş başarıyla tamamlandıktan sonra Google Drive'da dosyanın oluştuğunu kontrol edin.</li>
+        <li>Ardından mümkünse test ortamında geri yükleme deneyin.</li>
+      </ul>
+
+      <h3>Sorun çıktığında nerelere bakılır?</h3>
+      <ul>
+        <li>Panelde iş görünmüyorsa <code>settings.py</code> ve <code>urls.py</code> bağlantısını kontrol edin.</li>
+        <li>İş başlıyor ama hemen düşüyorsa ortam değişkenleri eksik olabilir.</li>
+        <li>Uzak yedek listesi boşsa <code>rclone lsd gdrive:</code> komutunu terminalde test edin.</li>
+        <li>Log görmek için arayüzde <strong>Günlüğü Aç</strong> düğmesini kullanın.</li>
+      </ul>
 
       <h2>Operasyon notları</h2>
       <ul>
