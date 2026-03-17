@@ -159,6 +159,7 @@ BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
 export CYBERPANEL_SERVER_RESTORE_SCRIPT=/usr/local/bin/cyberpanel_restore.sh
 export CYBERPANEL_SERVER_BACKUP_UI_STATE_DIR=/var/lib/cyberpanel-backup-ui</code></pre>
       <p>Make sure the web process can spawn background jobs and that <code>rclone</code> is available on the host.</p>
+      <p>If you want email notifications after backup completion or failure, the host also needs a local <code>sendmail</code>-compatible MTA.</p>
 
       <h2>Operational notes</h2>
       <ul>

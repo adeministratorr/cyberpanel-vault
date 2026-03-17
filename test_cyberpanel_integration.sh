@@ -268,6 +268,22 @@ check_rclone_remote() {
     fi
 }
 
+check_notification_mailer() {
+    local settings_path="${STATE_DIR}/settings.json"
+
+    if [ ! -f "$settings_path" ]; then
+        return
+    fi
+
+    if grep -Fq '"backup_notification_enabled": true' "$settings_path"; then
+        if command -v sendmail >/dev/null 2>&1; then
+            pass "E-posta bildirimi icin sendmail bulundu"
+        else
+            warn "E-posta bildirimi acik ama sendmail komutu bulunamadi"
+        fi
+    fi
+}
+
 check_private_root_file() {
     local path="$1"
     local label="$2"
@@ -406,6 +422,7 @@ main() {
     check_runner_as_web_user
     check_state_permissions
     check_rclone_remote
+    check_notification_mailer
     check_python_syntax
     check_script_syntax
     check_panel_url

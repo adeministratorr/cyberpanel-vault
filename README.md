@@ -51,6 +51,7 @@ CyberPanel Vault fills that gap.
 - CyberPanel MySQL root password file at `/etc/cyberpanel/mysqlPassword`
 - An `rclone` remote for Google Drive, or equivalent values for `RCLONE_REMOTE` and `DRIVE_FOLDER`
 - Encryption password file at `/root/.config/cyberpanel-backup/encryption.pass`
+- Optional: a local `sendmail`-compatible MTA if you want email notifications from the UI
 
 ## Installation
 
@@ -198,7 +199,9 @@ bash test_cyberpanel_integration.sh --panel-url https://panel.example.com/server
 
 The installer copies the Django app into the CyberPanel codebase, installs the shell scripts, writes a restricted root runner, patches `settings.py` and `urls.py`, and creates a `sudoers` rule so the panel can launch root-only backup jobs safely.
 
-The UI shows the saved timeout, schedule and component selections when the page loads. Manual and scheduled backups can be limited to `databases`, `site`, `server` and `email`, and each component combination keeps its own incremental chain.
+The UI shows the saved timeout, schedule, notification and component selections when the page loads. Manual and scheduled backups can be limited to `databases`, `site`, `server` and `email`, and each component combination keeps its own incremental chain.
+
+If the host has a local `sendmail`-compatible MTA, the UI can also send a message to the admin address when a backup finishes successfully or ends with an error.
 
 Manual integration points:
 

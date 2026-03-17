@@ -249,11 +249,13 @@ Server Backup Manager kurulduğunda yedekleme ve geri yükleme işlemlerini term
 - Google Drive üzerindeki bu sunucuya ait yedek zincirlerini listeler.
 - Seçilen zincir için geri yükleme işi başlatır.
 - Son işleri ve günlük kayıtlarını ekranda gösterir.
+- İsterseniz başarı ve hata durumunda yönetici e-posta adresine bildirim yollar.
 
 ### Kuruluma başlamadan önce bilinmesi gerekenler
 
 - Önce shell script tarafı çalışıyor olmalıdır. Yani `cyberpanel_full_backup.sh` ve `cyberpanel_restore.sh` kurulu olmalı.
 - Google Drive bağlantısı hazır olmalıdır. Bunun için `rclone lsd gdrive:` komutu hata vermemeli.
+- E-posta bildirimi kullanacaksanız sunucuda `sendmail` uyumlu yerel bir posta servisi bulunmalıdır.
 - Bu bölüm, CyberPanel'in Django yapısına dosya eklemeyi gerektirir. Yani sadece kopyala ve çalıştır mantığında değildir.
 - Bu ekranı kullanacak kişinin panelde yönetici yetkisi olmalıdır.
 
@@ -383,7 +385,12 @@ Ardından **Yedeklemeyi Başlat** düğmesine basın. İş arka planda başlar. 
 
 Bu bölüm tek bir zamanlama kaydı yönetir. Aynı anda birden fazla farklı takvim tanımlamak yerine, seçtiğiniz kombinasyonu planlamanız için vardır.
 
-### 3. Yedeklerin durumunu izleme
+### 3. E-posta bildirimi
+
+**E-posta Bildirimi** bölümünde alıcı adresini yazıp hangi durumda mail gideceğini seçebilirsiniz. İsterseniz sadece hata olduğunda, isterseniz başarıyla tamamlandığında da bildirim gönderebilirsiniz.
+
+Bu mail, sunucudaki yerel `sendmail` uyumlu posta altyapısı üzerinden gönderilir. CyberPanel kurulu sunucularda bu pratikte host üzerindeki MTA yapılandırmasını kullanır.
+### 4. Yedeklerin durumunu izleme
 
 Sayfanın alt kısmındaki **Son İşler** alanında başlatılan işleri görürsünüz. Burada işin:
 
@@ -393,7 +400,7 @@ Sayfanın alt kısmındaki **Son İşler** alanında başlatılan işleri görü
 
 yer alır. **Günlüğü Aç** düğmesine basarsanız işlem çıktısını ekranda görürsünüz.
 
-### 4. Geri yükleme başlatma
+### 5. Geri yükleme başlatma
 
 **Uzak Yedek Zincirleri** bölümünde Google Drive üzerindeki bu sunucuya ait yedekler listelenir. Buradan bir hedef seçin. Seçtiğiniz dosya otomatik olarak geri yükleme kutusuna gelir.
 
@@ -406,7 +413,7 @@ Sonra şu adımları izleyin:
 
 Bu işlem canlı sisteme yazdığı için dikkatli kullanılmalıdır.
 
-### 5. İlk kullanımda güvenli test önerisi
+### 6. İlk kullanımda güvenli test önerisi
 
 Arayüzü doğrudan üretim sunucusunda denemek yerine önce küçük bir test yapın:
 

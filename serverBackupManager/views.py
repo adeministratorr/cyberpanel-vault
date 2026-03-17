@@ -94,6 +94,31 @@ def save_schedule(request: HttpRequest) -> HttpResponse:
 
 @admin_required
 @require_POST
+def save_notifications(request: HttpRequest) -> HttpResponse:
+    notification_enabled = request.POST.get("notification_enabled") == "on"
+    notification_email = request.POST.get("notification_email", "").strip()
+    notification_on_success = request.POST.get("notification_on_success") == "on"
+    notification_on_failure = request.POST.get("notification_on_failure") == "on"
+
+    try:
+        settings = services.update_backup_notifications(
+            enabled=notification_enabled,
+            email=notification_email,
+            on_success=notification_on_success,
+            on_failure=notification_on_failure,
+        )
+        messages.success(
+            request,
+            f"E-posta bildirimi kaydedildi: {services.summarize_backup_notification_settings(settings)}",
+        )
+    except services.ServiceError as exc:
+        messages.error(request, str(exc))
+
+    return redirect("serverBackupManager:index")
+
+
+@admin_required
+@require_POST
 def run_restore(request: HttpRequest) -> HttpResponse:
     target_file = request.POST.get("target_file", "").strip()
     confirm_host = request.POST.get("confirm_host", "").strip()

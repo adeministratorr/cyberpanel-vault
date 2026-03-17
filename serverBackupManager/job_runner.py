@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import shutil
 import signal
 import socket
 import subprocess
@@ -28,6 +29,9 @@ DEFAULT_BACKUP_TIMEOUT_MINUTES = 120
 MIN_BACKUP_TIMEOUT_MINUTES = 0
 MAX_BACKUP_TIMEOUT_MINUTES = 1440
 TIMEOUT_GRACE_SECONDS = 30
+DEFAULT_NOTIFY_FROM = os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_FROM", f"root@{HOST_FQDN}")
+DEFAULT_NOTIFY_SUBJECT_PREFIX = os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_SUBJECT_PREFIX", "[CyberPanel Vault]")
+NOTIFY_SENDMAIL_COMMAND = os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_SENDMAIL", "sendmail")
 
 
 class JobRunnerError(RuntimeError):
@@ -103,6 +107,17 @@ def validate_job_path(job_path: Path) -> Path:
     return resolved_job_path
 
 
+def resolve_log_path(job: dict) -> Path | None:
+    raw_log_path = str(job.get("log_path", "")).strip()
+    if not raw_log_path:
+        return None
+
+    resolved_log_path = Path(raw_log_path).resolve()
+    if resolved_log_path.parent != JOBS_DIR.resolve():
+        return None
+    return resolved_log_path
+
+
 def load_job(job_path: Path) -> dict:
     return json.loads(job_path.read_text(encoding="utf-8"))
 
@@ -162,6 +177,134 @@ def build_job_command(job: dict) -> tuple[list[str], dict[str, str], int | None]
     raise JobRunnerError(f"Desteklenmeyen iş türü: {job_type}")
 
 
+def _notification_requested(job: dict) -> bool:
+    if job.get("type") != "backup":
+        return False
+
+    meta = job.get("meta") or {}
+    if not meta.get("notify_enabled"):
+        return False
+    if not str(meta.get("notify_email", "")).strip():
+        return False
+
+    status = str(job.get("status", ""))
+    if status == "completed":
+        return bool(meta.get("notify_on_success"))
+    if status == "failed":
+        return bool(meta.get("notify_on_failure"))
+    return False
+
+
+def _append_notification_log(log_path: Path | None, line: str) -> None:
+    if log_path is None:
+        return
+
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.touch(mode=UI_FILE_MODE, exist_ok=True)
+        log_path.chmod(UI_FILE_MODE)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{line}\n")
+    except OSError:
+        pass
+
+
+def _notification_subject(job: dict) -> str:
+    status = str(job.get("status", ""))
+    meta = job.get("meta") or {}
+    status_label = "başarılı" if status == "completed" else "hatalı"
+    mode = str(meta.get("mode", "")).strip() or "manual"
+    components = str(meta.get("components_label", "")).strip() or "Tüm bileşenler"
+    return f"{DEFAULT_NOTIFY_SUBJECT_PREFIX} {HOST_FQDN} yedek {status_label} ({mode} | {components})"
+
+
+def _notification_body(job: dict, log_path: Path | None) -> str:
+    meta = job.get("meta") or {}
+    timeout_label = ""
+    if "timeout_minutes" in meta:
+        timeout_label = "limitsiz" if meta.get("timeout_minutes") == 0 else f"{meta.get('timeout_minutes')} dakika"
+
+    log_tail = ""
+    if log_path and log_path.exists():
+        try:
+            log_tail = log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            log_tail = ""
+        if len(log_tail) > 8000:
+            log_tail = log_tail[-8000:]
+
+    lines = [
+        "CyberPanel Vault yedek işi tamamlandı.",
+        "",
+        f"Sunucu: {HOST_FQDN}",
+        f"İş kimliği: {job.get('id', '')}",
+        f"Durum: {job.get('status', '')}",
+        f"Mod: {meta.get('mode', '')}",
+        f"Kapsam: {meta.get('components_label', '')}",
+        f"Süre sınırı: {timeout_label}",
+        f"Oluşturuldu: {job.get('created_at', '')}",
+        f"Başladı: {job.get('started_at', '')}",
+        f"Bitti: {job.get('finished_at', '')}",
+        f"Çıkış kodu: {job.get('exit_code', '')}",
+    ]
+    if job.get("error"):
+        lines.append(f"Hata: {job.get('error', '')}")
+    if log_path is not None:
+        lines.append(f"Log dosyası: {log_path}")
+    if log_tail:
+        lines.extend(["", "Son log satırları:", "", log_tail])
+    return "\n".join(lines)
+
+
+def send_job_notification(job: dict) -> None:
+    if not _notification_requested(job):
+        return
+
+    log_path = resolve_log_path(job)
+    recipient = str((job.get("meta") or {}).get("notify_email", "")).strip()
+    if not recipient:
+        _append_notification_log(log_path, "[notify] recipient_missing=1")
+        return
+
+    sendmail_path = NOTIFY_SENDMAIL_COMMAND
+    if not os.path.isabs(sendmail_path):
+        resolved_sendmail = shutil.which(sendmail_path)
+        if resolved_sendmail:
+            sendmail_path = resolved_sendmail
+
+    if not sendmail_path or not os.path.exists(sendmail_path):
+        _append_notification_log(log_path, f"[notify] sendmail_not_found={NOTIFY_SENDMAIL_COMMAND}")
+        return
+
+    message = (
+        f"From: {DEFAULT_NOTIFY_FROM}\n"
+        f"To: {recipient}\n"
+        f"Subject: {_notification_subject(job)}\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        f"{_notification_body(job, log_path)}\n"
+    )
+
+    try:
+        result = subprocess.run(
+            [sendmail_path, "-t", "-oi"],
+            input=message,
+            text=True,
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        _append_notification_log(log_path, f"[notify] send_failed={exc}")
+        return
+
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip() or f"exit={result.returncode}"
+        _append_notification_log(log_path, f"[notify] send_failed={detail}")
+        return
+
+    _append_notification_log(log_path, f"[notify] sent_to={recipient}")
+
+
 def ensure_script_ready(path: Path, label: str) -> None:
     if not path.exists():
         raise JobRunnerError(f"{label} betiği bulunamadı: {path}")
@@ -175,6 +318,7 @@ def mark_job_failed(job_path: Path, job: dict, message: str) -> None:
     job["status"] = "failed"
     job["error"] = message
     write_json(job_path, job)
+    send_job_notification(job)
 
 
 def main() -> int:
@@ -199,8 +343,8 @@ def main() -> int:
         mark_job_failed(job_path, job, str(exc))
         raise SystemExit(str(exc))
 
-    log_path = Path(job["log_path"]).resolve()
-    if log_path.parent != JOBS_DIR.resolve():
+    log_path = resolve_log_path(job)
+    if log_path is None:
         raise SystemExit(f"Log dosyası izin verilen klasörde değil: {log_path}")
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.parent.chmod(UI_DIR_MODE)
@@ -272,6 +416,7 @@ def main() -> int:
     if return_code == 124:
         job["error"] = "Yedekleme süresi sınırı aşıldı."
     write_json(job_path, job)
+    send_job_notification(job)
     return return_code
 
 

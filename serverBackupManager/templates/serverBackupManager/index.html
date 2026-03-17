@@ -511,6 +511,34 @@
                     <button class="secondary" type="submit">Zamanlamayı Kaydet</button>
                 </form>
 
+                <div class="summary-card">
+                    <h3>E-posta Bildirimi</h3>
+                    <div class="summary-note" id="notification-summary-note">{{ backup_notification_summary }}</div>
+                </div>
+                <form method="post" action="{% url 'serverBackupManager:save_notifications' %}" class="stack">
+                    {% csrf_token %}
+                    <label class="check">
+                        <input id="notification_enabled" type="checkbox" name="notification_enabled" {% if backup_settings.backup_notification_enabled %}checked{% endif %}>
+                        Yedek işi bittiğinde e-posta gönder
+                    </label>
+                    <div>
+                        <label for="notification_email">Alıcı e-posta adresi</label>
+                        <input
+                            id="notification_email"
+                            name="notification_email"
+                            type="email"
+                            value="{{ backup_settings.backup_notification_email }}"
+                            placeholder="admin@example.com"
+                        >
+                    </div>
+                    <div class="checklist">
+                        <label class="check"><input id="notification_on_success" type="checkbox" name="notification_on_success" {% if backup_settings.backup_notification_on_success %}checked{% endif %}> Başarıyla tamamlanınca</label>
+                        <label class="check"><input id="notification_on_failure" type="checkbox" name="notification_on_failure" {% if backup_settings.backup_notification_on_failure %}checked{% endif %}> Hata olunca</label>
+                    </div>
+                    <div class="meta">Mail, sunucudaki yerel <code>sendmail</code> uyumlu posta altyapısı üzerinden gönderilir. CyberPanel kurulu hostlarda bu pratikte yerel MTA yapılandırmasını kullanır.</div>
+                    <button class="secondary" type="submit">Bildirim Ayarını Kaydet</button>
+                </form>
+
                 <div class="meta">
                     Geri yükleme betiği: {{ restore_script }}
                 </div>
@@ -711,6 +739,11 @@
         const targetInput = document.getElementById("target_file");
         const backupTimeoutInput = document.getElementById("timeout_minutes");
         const scheduleSummaryNote = document.getElementById("schedule-summary-note");
+        const notificationSummaryNote = document.getElementById("notification-summary-note");
+        const notificationEmailInput = document.getElementById("notification_email");
+        const notificationEnabledInput = document.getElementById("notification_enabled");
+        const notificationOnSuccessInput = document.getElementById("notification_on_success");
+        const notificationOnFailureInput = document.getElementById("notification_on_failure");
         const backupsBody = document.getElementById("backups-body");
         const downloadLogButton = document.getElementById("download-log");
         let selectedJobId = "";
@@ -782,6 +815,16 @@
 
             if (payload.backup_schedule_summary && scheduleSummaryNote) {
                 scheduleSummaryNote.textContent = payload.backup_schedule_summary;
+            }
+
+            if (payload.backup_notification_summary && notificationSummaryNote) {
+                notificationSummaryNote.textContent = payload.backup_notification_summary;
+            }
+
+            if (payload.backup_settings) {
+                if (notificationEmailInput && document.activeElement !== notificationEmailInput) {
+                    notificationEmailInput.value = payload.backup_settings.backup_notification_email ?? notificationEmailInput.value;
+                }
             }
         }
 

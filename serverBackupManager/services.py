@@ -8,6 +8,7 @@ import sys
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from email.utils import parseaddr
 import fcntl
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,10 @@ DEFAULT_SCHEDULE_ENABLED = False
 DEFAULT_SCHEDULE_HOUR = 3
 DEFAULT_SCHEDULE_MINUTE = 0
 DEFAULT_SCHEDULE_MODE = "auto"
+DEFAULT_NOTIFICATION_ENABLED = False
+DEFAULT_NOTIFICATION_EMAIL = str(os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_EMAIL", "")).strip()
+DEFAULT_NOTIFICATION_ON_SUCCESS = False
+DEFAULT_NOTIFICATION_ON_FAILURE = True
 BACKUP_COMPONENT_ORDER = ["databases", "site", "server", "email"]
 BACKUP_COMPONENT_LABELS = {
     "databases": "Veritabanı",
@@ -66,6 +71,7 @@ DEFAULT_BACKUP_COMPONENTS = list(BACKUP_COMPONENT_ORDER)
 UI_DIR_MODE = 0o2770
 UI_FILE_MODE = 0o660
 WEEKDAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+$")
 WEEKDAY_LABELS = {
     "mon": "Pzt",
     "tue": "Sal",
@@ -173,6 +179,15 @@ def _sanitize_schedule_mode(value: Any, default: str) -> str:
     if mode not in ALLOWED_BACKUP_MODES:
         return default
     return mode
+
+
+def _sanitize_notification_email(value: Any, default: str) -> str:
+    candidate = str(value).strip() if value is not None else str(default).strip()
+    if not candidate:
+        return ""
+
+    _, parsed_address = parseaddr(candidate)
+    return parsed_address.strip()
 
 
 def _coerce_backup_components(value: Any) -> list[str] | None:
@@ -424,6 +439,22 @@ def _settings_defaults() -> dict[str, Any]:
             os.environ.get("CYBERPANEL_SERVER_BACKUP_SCHEDULE_WEEKDAYS"),
             WEEKDAY_ORDER,
         ),
+        "backup_notification_enabled": _parse_bool(
+            os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_ENABLED"),
+            DEFAULT_NOTIFICATION_ENABLED,
+        ),
+        "backup_notification_email": _sanitize_notification_email(
+            os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_EMAIL"),
+            DEFAULT_NOTIFICATION_EMAIL,
+        ),
+        "backup_notification_on_success": _parse_bool(
+            os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_ON_SUCCESS"),
+            DEFAULT_NOTIFICATION_ON_SUCCESS,
+        ),
+        "backup_notification_on_failure": _parse_bool(
+            os.environ.get("CYBERPANEL_SERVER_BACKUP_NOTIFY_ON_FAILURE"),
+            DEFAULT_NOTIFICATION_ON_FAILURE,
+        ),
     }
 
 
@@ -472,6 +503,22 @@ def load_ui_settings() -> dict[str, Any]:
             payload.get("backup_schedule_weekdays"),
             settings["backup_schedule_weekdays"],
         )
+        settings["backup_notification_enabled"] = _parse_bool(
+            payload.get("backup_notification_enabled"),
+            settings["backup_notification_enabled"],
+        )
+        settings["backup_notification_email"] = _sanitize_notification_email(
+            payload.get("backup_notification_email"),
+            settings["backup_notification_email"],
+        )
+        settings["backup_notification_on_success"] = _parse_bool(
+            payload.get("backup_notification_on_success"),
+            settings["backup_notification_on_success"],
+        )
+        settings["backup_notification_on_failure"] = _parse_bool(
+            payload.get("backup_notification_on_failure"),
+            settings["backup_notification_on_failure"],
+        )
 
     return settings
 
@@ -503,6 +550,20 @@ def save_ui_settings(settings: dict[str, Any]) -> dict[str, Any]:
                     settings.get("backup_schedule_mode", current["backup_schedule_mode"]),
                     settings.get("backup_schedule_components", current["backup_schedule_components"]),
                     settings.get("backup_schedule_weekdays", current["backup_schedule_weekdays"]),
+                )
+            )
+        if {
+            "backup_notification_enabled",
+            "backup_notification_email",
+            "backup_notification_on_success",
+            "backup_notification_on_failure",
+        } & set(settings.keys()):
+            current.update(
+                validate_backup_notification_settings(
+                    settings.get("backup_notification_enabled", current["backup_notification_enabled"]),
+                    settings.get("backup_notification_email", current["backup_notification_email"]),
+                    settings.get("backup_notification_on_success", current["backup_notification_on_success"]),
+                    settings.get("backup_notification_on_failure", current["backup_notification_on_failure"]),
                 )
             )
         _write_json(SETTINGS_FILE, current)
@@ -579,6 +640,30 @@ def validate_backup_schedule_settings(
     }
 
 
+def validate_backup_notification_settings(enabled: Any, email: Any, on_success: Any, on_failure: Any) -> dict[str, Any]:
+    notification_enabled = _parse_bool(enabled, DEFAULT_NOTIFICATION_ENABLED)
+    notification_email = _sanitize_notification_email(email, DEFAULT_NOTIFICATION_EMAIL)
+    notify_on_success = _parse_bool(on_success, DEFAULT_NOTIFICATION_ON_SUCCESS)
+    notify_on_failure = _parse_bool(on_failure, DEFAULT_NOTIFICATION_ON_FAILURE)
+    raw_email = str(email).strip() if email is not None else ""
+
+    if raw_email and not notification_email:
+        raise ServiceError("Bildirim e-posta adresi geçerli değil.")
+    if notification_email and not EMAIL_RE.match(notification_email):
+        raise ServiceError("Bildirim e-posta adresi geçerli değil.")
+    if notification_enabled and not notification_email:
+        raise ServiceError("E-posta bildirimi açıkken alıcı adresi zorunludur.")
+    if notification_enabled and not (notify_on_success or notify_on_failure):
+        raise ServiceError("E-posta bildirimi için en az bir tetik seçilmelidir.")
+
+    return {
+        "backup_notification_enabled": notification_enabled,
+        "backup_notification_email": notification_email,
+        "backup_notification_on_success": notify_on_success,
+        "backup_notification_on_failure": notify_on_failure,
+    }
+
+
 def summarize_backup_schedule(settings: dict[str, Any]) -> str:
     if not settings.get("backup_schedule_enabled"):
         return "Otomatik yedekleme kapalı."
@@ -600,6 +685,20 @@ def summarize_backup_schedule(settings: dict[str, Any]) -> str:
         f"{day_label} {settings['backup_schedule_hour']:02d}:{settings['backup_schedule_minute']:02d} | "
         f"{mode_label} | {components_label}"
     )
+
+
+def summarize_backup_notification_settings(settings: dict[str, Any]) -> str:
+    if not settings.get("backup_notification_enabled"):
+        return "E-posta bildirimi kapalı."
+
+    event_labels: list[str] = []
+    if settings.get("backup_notification_on_success"):
+        event_labels.append("Başarı")
+    if settings.get("backup_notification_on_failure"):
+        event_labels.append("Hata")
+    event_summary = " + ".join(event_labels) if event_labels else "Seçim yok"
+    recipient = str(settings.get("backup_notification_email", "")).strip() or "tanımsız"
+    return f"{recipient} | {event_summary}"
 
 
 def _has_active_jobs() -> bool:
@@ -786,10 +885,11 @@ def start_backup_job(
     if mode not in ALLOWED_BACKUP_MODES:
         raise ServiceError(f"Geçersiz yedekleme modu: {mode}")
 
+    ui_settings = load_ui_settings()
     validated_timeout_minutes = validate_backup_timeout_minutes(timeout_minutes)
     validated_components = validate_backup_components(
         components,
-        default=load_ui_settings()["backup_default_components"],
+        default=ui_settings["backup_default_components"],
     )
     _validate_script(BACKUP_SCRIPT, "Backup")
     _ensure_no_active_jobs()
@@ -816,6 +916,10 @@ def start_backup_job(
             "components": validated_components,
             "components_label": summarize_backup_components(validated_components, compact=True),
             "profile_key": backup_profile_key(validated_components),
+            "notify_enabled": bool(ui_settings.get("backup_notification_enabled")),
+            "notify_email": str(ui_settings.get("backup_notification_email", "")).strip(),
+            "notify_on_success": bool(ui_settings.get("backup_notification_on_success")),
+            "notify_on_failure": bool(ui_settings.get("backup_notification_on_failure")),
         },
     )
 
@@ -829,6 +933,11 @@ def update_backup_schedule(enabled: Any, hour: Any, minute: Any, mode: Any, comp
     }
     apply_backup_schedule(candidate_settings)
     return save_ui_settings(validated_schedule)
+
+
+def update_backup_notifications(enabled: Any, email: Any, on_success: Any, on_failure: Any) -> dict[str, Any]:
+    validated_notifications = validate_backup_notification_settings(enabled, email, on_success, on_failure)
+    return save_ui_settings(validated_notifications)
 
 
 def start_restore_job(target_file: str, confirm_host: str, skip_db: bool, skip_files: bool, skip_configs: bool, skip_services: bool) -> dict[str, Any]:
@@ -1020,6 +1129,7 @@ def dashboard_state() -> dict[str, Any]:
         "active_job_summary": active_job_summary(jobs),
         "backup_settings": ui_settings,
         "backup_schedule_summary": summarize_backup_schedule(ui_settings),
+        "backup_notification_summary": summarize_backup_notification_settings(ui_settings),
     }
 
 
@@ -1034,6 +1144,7 @@ def dashboard_context() -> dict[str, Any]:
         "active_job_summary": state["active_job_summary"],
         "backup_settings": state["backup_settings"],
         "backup_schedule_summary": state["backup_schedule_summary"],
+        "backup_notification_summary": state["backup_notification_summary"],
         "host_fqdn": HOST_FQDN,
         "host_slug": HOST_SLUG,
         "backup_script": str(BACKUP_SCRIPT),
