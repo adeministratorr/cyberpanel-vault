@@ -77,30 +77,43 @@ cd /opt/cyberpanel-vault</code></pre>
       </div>
       <p>The <code>wget</code> path requires the <code>unzip</code> package on the server.</p>
 
-      <h3>2. Install the scripts into the system path</h3>
+      <h3>2. Run the installer</h3>
+      <p>For a full CyberPanel setup, run:</p>
+      <pre><code>cd /opt/cyberpanel-vault
+bash install.sh</code></pre>
+      <p>If your CyberPanel web process uses a different user:</p>
+      <pre><code>cd /opt/cyberpanel-vault
+bash install.sh --web-user YOUR_WEB_USER</code></pre>
+      <p>For a shell-only installation without panel integration:</p>
+      <pre><code>cd /opt/cyberpanel-vault
+bash install.sh --shell-only</code></pre>
+      <p>This script installs the shell tools, prepares directories, creates a secret if needed, tightens <code>rclone</code> permissions, and optionally completes the CyberPanel UI integration.</p>
+
+      <h3>3. Manual installation</h3>
+      <p>If you prefer a step-by-step manual setup, use the following commands.</p>
       <pre><code>install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
 install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh</code></pre>
 
-      <h3>3. Create runtime directories</h3>
+      <h3>4. Create runtime directories</h3>
       <pre><code>mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui</code></pre>
 
-      <h3>4. Create the encryption password file</h3>
+      <h3>5. Create the encryption password file</h3>
       <pre><code>printf '%s\n' 'REPLACE_WITH_A_LONG_RANDOM_SECRET' >/root/.config/cyberpanel-backup/encryption.pass
 chmod 600 /root/.config/cyberpanel-backup/encryption.pass</code></pre>
 
-      <h3>5. Configure the Google Drive remote</h3>
+      <h3>6. Configure the Google Drive remote</h3>
       <p>Set up <code>rclone</code> for Google Drive. The scripts expect the remote name <code>gdrive</code> by default.</p>
       <p>If you use the default root config path, keep the file readable only by root:</p>
       <pre><code>chmod 600 /root/.config/rclone/rclone.conf</code></pre>
 
-      <h3>6. Run the first full backup</h3>
+      <h3>7. Run the first full backup</h3>
       <pre><code>BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
       <p>You can also back up only selected areas:</p>
       <pre><code>BACKUP_MODE=full BACKUP_COMPONENTS=databases /usr/local/bin/cyberpanel_full_backup.sh
 BACKUP_MODE=full BACKUP_COMPONENTS=site,server /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
 
-      <h3>7. Schedule regular runs</h3>
+      <h3>8. Schedule regular runs</h3>
       <pre><code>0 3 * * * BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
       <p>In <code>auto</code> mode, the script creates a weekly full backup and incremental runs between full snapshots.</p>
 

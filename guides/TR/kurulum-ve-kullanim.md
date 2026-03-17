@@ -84,7 +84,38 @@ cd /opt/cyberpanel-vault
 
 Bu adımın sonunda bulunduğunuz klasörün `/opt/cyberpanel-vault` olması gerekir.
 
-3. Betikleri sistem klasörüne yerleştirin.
+3. En kolay kurulum için `install.sh` çalıştırın.
+
+CyberPanel arayüzüyle birlikte tam kurulum:
+
+```bash
+cd /opt/cyberpanel-vault
+bash install.sh
+```
+
+CyberPanel web süreci farklı kullanıcıyla çalışıyorsa:
+
+```bash
+cd /opt/cyberpanel-vault
+bash install.sh --web-user WEB_SURECI_KULLANICISI
+```
+
+Sadece shell scriptlerini kurmak isterseniz:
+
+```bash
+cd /opt/cyberpanel-vault
+bash install.sh --shell-only
+```
+
+Bu script şunları yapar:
+
+- backup ve restore betiklerini kurar
+- gerekli klasörleri oluşturur
+- eksikse şifreleme parolasını üretir
+- `rclone` izinlerini sıkılaştırır
+- isterseniz CyberPanel arayüz entegrasyonunu kurar
+
+4. Betikleri sistem klasörüne elle yerleştirmek isterseniz aşağıdaki adımları uygulayın.
 
 Şimdi backup ve restore komutlarını sunucunun her yerinden çalıştırılabilir hale getiriyoruz:
 
@@ -93,7 +124,7 @@ install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.s
 install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh
 ```
 
-4. Gerekli klasörleri oluşturun.
+5. Gerekli klasörleri oluşturun.
 
 Bu klasörler yedek durumu, geçici dosyalar ve arayüz kayıtları için kullanılır:
 
@@ -102,7 +133,7 @@ mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyb
 chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 ```
 
-5. Şifreleme parolasını oluşturun.
+6. Şifreleme parolasını oluşturun.
 
 Bu parola çok önemlidir. Çünkü Google Drive'a giden yedek dosyaları bununla şifrelenir. Kısa ve tahmin edilebilir bir parola kullanmayın:
 
@@ -113,7 +144,7 @@ chmod 600 /root/.config/cyberpanel-backup/encryption.pass
 
 `GUCLU_UZUN_BIR_SIFRE` kısmını kendinize ait uzun bir parola ile değiştirin. Bu dosyayı kaybederseniz yedekleri açamazsınız.
 
-6. Google Drive bağlantısını kurun.
+7. Google Drive bağlantısını kurun.
 
 Yedeklerin Google Drive'a gidebilmesi için `rclone` ayarı yapmanız gerekir:
 
@@ -135,7 +166,7 @@ Varsayılan root yapılandırmasını kullanıyorsanız, `rclone` dosyasının i
 chmod 600 /root/.config/rclone/rclone.conf
 ```
 
-7. İlk tam yedeği başlatın.
+8. İlk tam yedeği başlatın.
 
 İlk çalıştırmada tam yedek almanız gerekir. Bu işlem sunucudaki veri miktarına göre uzun sürebilir:
 
@@ -156,7 +187,7 @@ BACKUP_MODE=full BACKUP_COMPONENTS=site,server /usr/local/bin/cyberpanel_full_ba
 tail -f /var/log/cyberpanel_backup.log
 ```
 
-8. Otomatik çalışmayı ayarlayın.
+9. Otomatik çalışmayı ayarlayın.
 
 Yedeklerin her gün otomatik alınmasını istiyorsanız root kullanıcısının cron tablosuna bir satır ekleyin:
 
@@ -172,7 +203,7 @@ Açılan dosyanın en altına şu satırı ekleyin:
 
 Kaydedip çıkın. Bundan sonra sistem her gece 03:00'te çalışır. `auto` modunda haftada bir tam yedek alınır, diğer günlerde artımlı yedek oluşturulur.
 
-9. Kurulumun doğru çalıştığını kontrol edin.
+10. Kurulumun doğru çalıştığını kontrol edin.
 
 Aşağıdaki üç şeyi kontrol edin:
 

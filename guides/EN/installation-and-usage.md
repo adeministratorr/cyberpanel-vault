@@ -51,28 +51,53 @@ cd /opt/cyberpanel-vault
 
 This method requires the `unzip` package on the server.
 
-2. Copy the scripts to the server:
+2. Run the installer.
+
+Full CyberPanel setup:
+
+```bash
+cd /opt/cyberpanel-vault
+bash install.sh
+```
+
+If your CyberPanel web process uses a different user:
+
+```bash
+cd /opt/cyberpanel-vault
+bash install.sh --web-user YOUR_WEB_USER
+```
+
+Shell-only installation:
+
+```bash
+cd /opt/cyberpanel-vault
+bash install.sh --shell-only
+```
+
+3. Manual installation is still available if you prefer to do it step by step.
+
+Copy the scripts to the server:
 
 ```bash
 install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
 install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh
 ```
 
-3. Create the runtime and secret directories:
+Create the runtime and secret directories:
 
 ```bash
 mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 ```
 
-4. Create the encryption password file:
+Create the encryption password file:
 
 ```bash
 printf '%s\n' 'REPLACE_WITH_A_LONG_RANDOM_SECRET' >/root/.config/cyberpanel-backup/encryption.pass
 chmod 600 /root/.config/cyberpanel-backup/encryption.pass
 ```
 
-5. Configure `rclone` for Google Drive. The default remote name expected by the scripts is `gdrive`.
+Configure `rclone` for Google Drive. The default remote name expected by the scripts is `gdrive`.
 
 If you use the default root config path, keep the file readable only by root:
 
@@ -80,7 +105,7 @@ If you use the default root config path, keep the file readable only by root:
 chmod 600 /root/.config/rclone/rclone.conf
 ```
 
-6. Run the first full backup:
+4. Run the first full backup:
 
 ```bash
 BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh
@@ -93,7 +118,7 @@ BACKUP_MODE=full BACKUP_COMPONENTS=databases /usr/local/bin/cyberpanel_full_back
 BACKUP_MODE=full BACKUP_COMPONENTS=site,server /usr/local/bin/cyberpanel_full_backup.sh
 ```
 
-7. Schedule regular runs in `auto` mode:
+5. Schedule regular runs in `auto` mode:
 
 ```bash
 0 3 * * * BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh
