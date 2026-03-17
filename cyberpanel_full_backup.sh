@@ -25,6 +25,11 @@ LOCK_FILE="${LOCK_FILE:-/var/lock/cyberpanel_full_backup.lock}"
 ENCRYPTION_PASSWORD_FILE="${ENCRYPTION_PASSWORD_FILE:-/root/.config/cyberpanel-backup/encryption.pass}"
 OPENSSL_CIPHER="${OPENSSL_CIPHER:-aes-256-cbc}"
 OPENSSL_PBKDF2_ITERATIONS="${OPENSSL_PBKDF2_ITERATIONS:-200000}"
+CONSISTENCY_MODE="${CONSISTENCY_MODE:-service-freeze}"
+CONSISTENCY_STRICT="${CONSISTENCY_STRICT:-1}"
+QUIESCE_SERVICES="${QUIESCE_SERVICES:-lsws lscpd postfix dovecot crond cron pure-ftpd}"
+PRE_BACKUP_HOOK="${PRE_BACKUP_HOOK:-}"
+POST_BACKUP_HOOK="${POST_BACKUP_HOOK:-}"
 
 RUN_TIMESTAMP="$(date +%Y%m%dT%H%M%S)"
 RUN_HUMAN_TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S %Z')"
@@ -57,8 +62,10 @@ STATE_LAST_FULL_TIMESTAMP=""
 SECONDS=0
 WARNINGS=0
 FAILURES=0
+CONSISTENCY_ACTIVE=0
 declare -a ROOT_ITEMS=()
 declare -a MYSQL_DUMP_ARGS=()
+declare -a STOPPED_SERVICES=()
 
 if [ -t 1 ]; then
     RED='\033[0;31m'
@@ -103,9 +110,19 @@ fatal() {
 }
 
 cleanup() {
+    local exit_code=$?
+
+    trap - EXIT INT TERM
+
+    if [ "$CONSISTENCY_ACTIVE" -eq 1 ]; then
+        thaw_writes || true
+    fi
+
     if [ -n "${MYSQL_DEFAULTS_FILE}" ] && [ -f "${MYSQL_DEFAULTS_FILE}" ]; then
         rm -f "${MYSQL_DEFAULTS_FILE}"
     fi
+
+    exit "$exit_code"
 }
 
 trap cleanup EXIT INT TERM
@@ -146,6 +163,21 @@ validate_settings() {
     require_positive_integer "FULL_BACKUP_INTERVAL_DAYS" "$FULL_BACKUP_INTERVAL_DAYS"
     require_positive_integer "RETENTION_DAYS" "$RETENTION_DAYS"
     require_positive_integer "OPENSSL_PBKDF2_ITERATIONS" "$OPENSSL_PBKDF2_ITERATIONS"
+    case "$CONSISTENCY_MODE" in
+        none|service-freeze)
+            ;;
+        *)
+            fatal "Gecersiz CONSISTENCY_MODE degeri: ${CONSISTENCY_MODE}"
+            ;;
+    esac
+
+    case "$CONSISTENCY_STRICT" in
+        0|1)
+            ;;
+        *)
+            fatal "CONSISTENCY_STRICT 0 veya 1 olmalidir. Deger: ${CONSISTENCY_STRICT}"
+            ;;
+    esac
 }
 
 acquire_lock() {
@@ -326,6 +358,118 @@ determine_mysqldump_mode() {
     esac
 }
 
+service_exists() {
+    local service_name="$1"
+    local load_state
+
+    load_state="$(systemctl show "$service_name" -p LoadState --value 2>/dev/null || true)"
+    [ -n "$load_state" ] && [ "$load_state" != "not-found" ]
+}
+
+run_consistency_hook() {
+    local stage="$1"
+    local hook_cmd="$2"
+
+    [ -n "$hook_cmd" ] || return 0
+
+    log "Tutarlilik hook calisiyor (${stage})."
+    if /bin/sh -c "$hook_cmd" >>"$LOG_FILE" 2>&1; then
+        log "Tutarlilik hook tamamlandi (${stage})."
+        return 0
+    fi
+
+    if [ "$CONSISTENCY_STRICT" = "1" ]; then
+        fatal "Tutarlilik hook basarisiz oldu (${stage})."
+    fi
+
+    warn "Tutarlilik hook basarisiz oldu (${stage}), devam ediliyor."
+    return 1
+}
+
+freeze_writes() {
+    local service_name
+
+    if [ "$CONSISTENCY_MODE" = "none" ]; then
+        warn "CONSISTENCY_MODE=none. Veritabani ve dosya sistemi ayni ana sabitlenmeyecek."
+        return 0
+    fi
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        if [ "$CONSISTENCY_STRICT" = "1" ]; then
+            fatal "Tutarlilik modu icin systemctl gereklidir."
+        fi
+        warn "systemctl bulunamadi. Tutarlilik icin servis dondurma atlandi."
+        return 1
+    fi
+
+    run_consistency_hook "pre-freeze" "$PRE_BACKUP_HOOK" || true
+
+    STOPPED_SERVICES=()
+    log "Yazan servisler gecici olarak durduruluyor..."
+
+    for service_name in $QUIESCE_SERVICES; do
+        if ! service_exists "$service_name"; then
+            continue
+        fi
+
+        if ! systemctl is-active --quiet "$service_name"; then
+            continue
+        fi
+
+        if systemctl stop "$service_name" >>"$LOG_FILE" 2>&1; then
+            STOPPED_SERVICES+=("$service_name")
+            log "Servis durduruldu: ${service_name}"
+        else
+            if [ "$CONSISTENCY_STRICT" = "1" ]; then
+                fatal "Servis durdurulamadi: ${service_name}"
+            fi
+            warn "Servis durdurulamadi: ${service_name}"
+        fi
+    done
+
+    CONSISTENCY_ACTIVE=1
+    log "Tutarlilik penceresi acildi. Veritabani ve dosyalar ayni ana sabitlenecek."
+}
+
+thaw_writes() {
+    local idx
+    local service_name
+    local thaw_failed=0
+
+    if [ "$CONSISTENCY_ACTIVE" -eq 0 ]; then
+        return 0
+    fi
+
+    log "Durdurulan servisler yeniden baslatiliyor..."
+
+    for ((idx=${#STOPPED_SERVICES[@]} - 1; idx>=0; idx--)); do
+        service_name="${STOPPED_SERVICES[$idx]}"
+        if systemctl start "$service_name" >>"$LOG_FILE" 2>&1; then
+            log "Servis baslatildi: ${service_name}"
+        else
+            thaw_failed=1
+            log_line "ERROR" "$RED" "Servis baslatilamadi: ${service_name}"
+        fi
+    done
+
+    run_consistency_hook "post-thaw" "$POST_BACKUP_HOOK" || thaw_failed=1
+
+    STOPPED_SERVICES=()
+    CONSISTENCY_ACTIVE=0
+
+    if [ "$thaw_failed" -ne 0 ] && [ "$CONSISTENCY_STRICT" = "1" ]; then
+        return 1
+    fi
+
+    if [ "$thaw_failed" -ne 0 ]; then
+        warn "Bazi servisler geri acilirken sorun olustu."
+        return 1
+    fi
+
+    log "Tutarlilik penceresi kapatildi."
+    return 0
+}
+
 write_metadata() {
     cat >"${STAGING_PATH}/backup_meta.txt" <<EOF
 backup_name=${BACKUP_NAME}
@@ -342,6 +486,9 @@ archive_name=$(basename "$UPLOAD_PATH")
 encryption=openssl-${OPENSSL_CIPHER}
 mysql_dump_mode=${MYSQL_DUMP_MODE_EFFECTIVE}
 mysql_backup_strategy=full_dump_every_run
+consistency_mode=${CONSISTENCY_MODE}
+consistency_strict=${CONSISTENCY_STRICT}
+quiesce_services=${QUIESCE_SERVICES}
 restore_requires_previous_chain=$( [ "$BACKUP_TYPE" = "incremental" ] && printf 'yes' || printf 'no' )
 EOF
 }
@@ -607,6 +754,7 @@ main() {
     log "=========================================="
 
     write_metadata
+    freeze_writes
     backup_databases
     register_backup_paths "Site dosyalari (/home)" required "home"
     register_backup_paths "CyberPanel ayarlari" required "usr/local/CyberCP/CyberCP/settings.py" "etc/cyberpanel"
@@ -621,6 +769,7 @@ main() {
 
     abort_if_critical_failures
     package_backup
+    thaw_writes || fatal "Durdurulan servisler guvenli sekilde yeniden baslatilamadi."
     encrypt_archive
     create_checksum
     upload_backup
