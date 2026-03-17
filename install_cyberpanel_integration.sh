@@ -35,6 +35,10 @@ require_root() {
     [ "$(id -u)" -eq 0 ] || fatal "Bu installer root olarak calistirilmalidir."
 }
 
+require_web_user() {
+    id "$WEB_USER" >/dev/null 2>&1 || fatal "WEB_USER bulunamadi: ${WEB_USER}"
+}
+
 require_files() {
     [ -d "$APP_SOURCE_DIR" ] || fatal "serverBackupManager klasoru bulunamadi: ${APP_SOURCE_DIR}"
     [ -f "$SETTINGS_FILE" ] || fatal "settings.py bulunamadi: ${SETTINGS_FILE}"
@@ -61,7 +65,11 @@ install_scripts() {
 prepare_state_dirs() {
     log "State klasorleri olusturuluyor..."
     mkdir -p "$STATE_JOBS_DIR"
-    chmod 700 "$STATE_DIR" "$STATE_JOBS_DIR"
+    chown root:"$WEB_USER" "$STATE_DIR" "$STATE_JOBS_DIR"
+    chmod 2770 "$STATE_DIR" "$STATE_JOBS_DIR"
+    find "$STATE_DIR" -type d -exec chmod 2770 {} +
+    find "$STATE_DIR" -type f -exec chmod 660 {} +
+    chgrp -R "$WEB_USER" "$STATE_DIR"
 }
 
 patch_settings() {
@@ -152,7 +160,9 @@ install_sudoers() {
     log "sudoers kurali yaziliyor..."
     cat >"$SUDOERS_FILE" <<EOF
 Defaults:${WEB_USER} !requiretty
-${WEB_USER} ALL=(root) NOPASSWD: ${RUNNER_TARGET} *
+${WEB_USER} ALL=(root) NOPASSWD: ${RUNNER_TARGET} --check
+${WEB_USER} ALL=(root) NOPASSWD: ${RUNNER_TARGET} ${STATE_JOBS_DIR}/*.json
+${WEB_USER} ALL=(root) NOPASSWD: ${RUNNER_TARGET} --apply-schedule ${STATE_DIR}/schedule-request-*.json
 EOF
     chmod 440 "$SUDOERS_FILE"
     visudo -cf "$SUDOERS_FILE" >/dev/null || fatal "sudoers dosyasi gecersiz: ${SUDOERS_FILE}"
@@ -183,6 +193,7 @@ EOF
 
 main() {
     require_root
+    require_web_user
     require_files
     copy_application
     install_scripts

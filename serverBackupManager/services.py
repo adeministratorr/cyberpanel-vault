@@ -6,7 +6,9 @@ import socket
 import subprocess
 import sys
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
+import fcntl
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +17,7 @@ BASE_DIR = Path(__file__).resolve().parent
 UI_STATE_DIR = Path(os.environ.get("CYBERPANEL_SERVER_BACKUP_UI_STATE_DIR", "/var/lib/cyberpanel-backup-ui"))
 JOBS_DIR = UI_STATE_DIR / "jobs"
 SETTINGS_FILE = UI_STATE_DIR / "settings.json"
+SETTINGS_LOCK_FILE = UI_STATE_DIR / ".settings.lock"
 BACKUP_SCRIPT = Path(os.environ.get("CYBERPANEL_SERVER_BACKUP_SCRIPT", "/usr/local/bin/cyberpanel_full_backup.sh"))
 RESTORE_SCRIPT = Path(os.environ.get("CYBERPANEL_SERVER_RESTORE_SCRIPT", "/usr/local/bin/cyberpanel_restore.sh"))
 JOB_RUNNER = BASE_DIR / "job_runner.py"
@@ -41,6 +44,8 @@ DEFAULT_SCHEDULE_ENABLED = False
 DEFAULT_SCHEDULE_HOUR = 3
 DEFAULT_SCHEDULE_MINUTE = 0
 DEFAULT_SCHEDULE_MODE = "auto"
+UI_DIR_MODE = 0o2770
+UI_FILE_MODE = 0o660
 WEEKDAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 WEEKDAY_LABELS = {
     "mon": "Pzt",
@@ -169,16 +174,38 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     tmp_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    tmp_path.chmod(0o600)
+    tmp_path.chmod(UI_FILE_MODE)
     tmp_path.replace(path)
-    path.chmod(0o600)
+    path.chmod(UI_FILE_MODE)
+
+
+@contextmanager
+def _locked_state_file(lock_path: Path):
+    ensure_runtime_dirs()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        try:
+            os.fchmod(lock_file.fileno(), UI_FILE_MODE)
+        except PermissionError:
+            pass
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def ensure_runtime_dirs() -> None:
     UI_STATE_DIR.mkdir(parents=True, exist_ok=True)
-    UI_STATE_DIR.chmod(0o700)
+    try:
+        UI_STATE_DIR.chmod(UI_DIR_MODE)
+    except PermissionError:
+        pass
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
-    JOBS_DIR.chmod(0o700)
+    try:
+        JOBS_DIR.chmod(UI_DIR_MODE)
+    except PermissionError:
+        pass
 
 
 def _validate_job_id(job_id: str) -> None:
@@ -328,27 +355,28 @@ def load_ui_settings() -> dict[str, Any]:
 
 
 def save_ui_settings(settings: dict[str, Any]) -> dict[str, Any]:
-    current = load_ui_settings()
-    if "backup_timeout_minutes" in settings:
-        current["backup_timeout_minutes"] = validate_backup_timeout_minutes(settings.get("backup_timeout_minutes"))
-    if {
-        "backup_schedule_enabled",
-        "backup_schedule_hour",
-        "backup_schedule_minute",
-        "backup_schedule_mode",
-        "backup_schedule_weekdays",
-    } & set(settings.keys()):
-        current.update(
-            validate_backup_schedule_settings(
-                settings.get("backup_schedule_enabled", current["backup_schedule_enabled"]),
-                settings.get("backup_schedule_hour", current["backup_schedule_hour"]),
-                settings.get("backup_schedule_minute", current["backup_schedule_minute"]),
-                settings.get("backup_schedule_mode", current["backup_schedule_mode"]),
-                settings.get("backup_schedule_weekdays", current["backup_schedule_weekdays"]),
+    with _locked_state_file(SETTINGS_LOCK_FILE):
+        current = load_ui_settings()
+        if "backup_timeout_minutes" in settings:
+            current["backup_timeout_minutes"] = validate_backup_timeout_minutes(settings.get("backup_timeout_minutes"))
+        if {
+            "backup_schedule_enabled",
+            "backup_schedule_hour",
+            "backup_schedule_minute",
+            "backup_schedule_mode",
+            "backup_schedule_weekdays",
+        } & set(settings.keys()):
+            current.update(
+                validate_backup_schedule_settings(
+                    settings.get("backup_schedule_enabled", current["backup_schedule_enabled"]),
+                    settings.get("backup_schedule_hour", current["backup_schedule_hour"]),
+                    settings.get("backup_schedule_minute", current["backup_schedule_minute"]),
+                    settings.get("backup_schedule_mode", current["backup_schedule_mode"]),
+                    settings.get("backup_schedule_weekdays", current["backup_schedule_weekdays"]),
+                )
             )
-        )
-    _write_json(SETTINGS_FILE, current)
-    return current
+        _write_json(SETTINGS_FILE, current)
+        return current
 
 
 def validate_backup_timeout_minutes(value: Any) -> int:

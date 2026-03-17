@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import argparse
+from contextlib import contextmanager
+import fcntl
 import json
 import os
 import shlex
@@ -13,6 +15,7 @@ import services
 APP_DIR = Path(__file__).resolve().parent
 UI_STATE_DIR = Path(os.environ.get("CYBERPANEL_SERVER_BACKUP_UI_STATE_DIR", "/var/lib/cyberpanel-backup-ui"))
 CRON_FILE = Path(os.environ.get("CYBERPANEL_SERVER_BACKUP_CRON_FILE", "/etc/cron.d/cyberpanel-vault"))
+CRON_LOCK_FILE = UI_STATE_DIR / ".schedule.lock"
 SCHEDULE_RUNNER = APP_DIR / "schedule_runner.py"
 CRON_WEEKDAY_MAP = {
     "mon": "1",
@@ -32,6 +35,18 @@ class ScheduleManagerError(RuntimeError):
 def require_root() -> None:
     if os.geteuid() != 0:
         raise ScheduleManagerError("Zamanlama yöneticisi root olarak çalışmalıdır.")
+
+
+@contextmanager
+def cron_lock():
+    UI_STATE_DIR.mkdir(parents=True, exist_ok=True)
+    with CRON_LOCK_FILE.open("a+", encoding="utf-8") as lock_file:
+        os.fchmod(lock_file.fileno(), services.UI_FILE_MODE)
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def validate_config_path(path_value: str) -> Path:
@@ -103,23 +118,24 @@ def apply_schedule(config_path_value: str) -> int:
     config_path = validate_config_path(config_path_value)
     settings = load_candidate_settings(config_path)
 
-    if not settings["backup_schedule_enabled"]:
-        try:
-            CRON_FILE.unlink()
-        except FileNotFoundError:
-            pass
-        print("Otomatik yedekleme kapatıldı.")
-        return 0
+    with cron_lock():
+        if not settings["backup_schedule_enabled"]:
+            try:
+                CRON_FILE.unlink()
+            except FileNotFoundError:
+                pass
+            print("Otomatik yedekleme kapatıldı.")
+            return 0
 
-    cron_content = render_cron(settings)
-    CRON_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = CRON_FILE.with_suffix(".tmp")
-    temp_path.write_text(cron_content, encoding="utf-8")
-    temp_path.chmod(0o644)
-    temp_path.replace(CRON_FILE)
-    CRON_FILE.chmod(0o644)
-    print(f"Zamanlama uygulandı: {services.summarize_backup_schedule(settings)}")
-    return 0
+        cron_content = render_cron(settings)
+        CRON_FILE.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = CRON_FILE.with_suffix(".tmp")
+        temp_path.write_text(cron_content, encoding="utf-8")
+        temp_path.chmod(0o644)
+        temp_path.replace(CRON_FILE)
+        CRON_FILE.chmod(0o644)
+        print(f"Zamanlama uygulandı: {services.summarize_backup_schedule(settings)}")
+        return 0
 
 
 def main() -> int:

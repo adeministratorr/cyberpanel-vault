@@ -16,6 +16,8 @@ JOBS_DIR = UI_STATE_DIR / "jobs"
 BACKUP_SCRIPT = Path(os.environ.get("CYBERPANEL_SERVER_BACKUP_SCRIPT", "/usr/local/bin/cyberpanel_full_backup.sh"))
 RESTORE_SCRIPT = Path(os.environ.get("CYBERPANEL_SERVER_RESTORE_SCRIPT", "/usr/local/bin/cyberpanel_restore.sh"))
 HOST_FQDN = socket.getfqdn() or socket.gethostname()
+UI_DIR_MODE = 0o2770
+UI_FILE_MODE = 0o660
 BACKUP_RE = re.compile(
     r"^backup__host-([A-Za-z0-9._-]+)__chain-(\d{8}T\d{6})__type-(full|incremental)__at-(\d{8}T\d{6})\.tar\.gz\.enc$"
 )
@@ -38,9 +40,9 @@ def now_iso() -> str:
 def write_json(path: Path, payload: dict) -> None:
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     tmp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    tmp_path.chmod(0o600)
+    tmp_path.chmod(UI_FILE_MODE)
     tmp_path.replace(path)
-    path.chmod(0o600)
+    path.chmod(UI_FILE_MODE)
 
 
 def parse_timeout_minutes(value: object) -> int:
@@ -170,9 +172,9 @@ def main() -> int:
     if log_path.parent != JOBS_DIR.resolve():
         raise SystemExit(f"Log dosyası izin verilen klasörde değil: {log_path}")
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_path.parent.chmod(0o700)
-    log_path.touch(mode=0o600, exist_ok=True)
-    log_path.chmod(0o600)
+    log_path.parent.chmod(UI_DIR_MODE)
+    log_path.touch(mode=UI_FILE_MODE, exist_ok=True)
+    log_path.chmod(UI_FILE_MODE)
 
     job["status"] = "running"
     job["started_at"] = now_iso()

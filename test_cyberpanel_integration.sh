@@ -201,10 +201,13 @@ check_sudoers() {
         fail "sudoers dosyasi gecersiz"
     fi
 
-    if [ -n "$WEB_USER" ] && grep -Fq "${WEB_USER} ALL=(root) NOPASSWD: ${RUNNER_SCRIPT} *" "$SUDOERS_FILE"; then
-        pass "Web kullanicisi icin sudoers kuralı bulundu: ${WEB_USER}"
+    if [ -n "$WEB_USER" ] && \
+        grep -Fq "${WEB_USER} ALL=(root) NOPASSWD: ${RUNNER_SCRIPT} --check" "$SUDOERS_FILE" && \
+        grep -Fq "${WEB_USER} ALL=(root) NOPASSWD: ${RUNNER_SCRIPT} ${STATE_JOBS_DIR}/*.json" "$SUDOERS_FILE" && \
+        grep -Fq "${WEB_USER} ALL=(root) NOPASSWD: ${RUNNER_SCRIPT} --apply-schedule ${STATE_DIR}/schedule-request-*.json" "$SUDOERS_FILE"; then
+        pass "Web kullanicisi icin sudoers kurallari bulundu: ${WEB_USER}"
     elif [ -n "$WEB_USER" ]; then
-        fail "Web kullanicisi icin sudoers kuralı eksik: ${WEB_USER}"
+        fail "Web kullanicisi icin sudoers kurallari eksik: ${WEB_USER}"
     else
         warn "Web kullanicisi tespit edilemedi; sudoers kullanici kontrolu atlandi."
     fi
@@ -236,6 +239,25 @@ check_runner_as_web_user() {
     fi
 }
 
+check_state_permissions() {
+    if [ -z "$WEB_USER" ]; then
+        warn "Web kullanicisi bilinmedigi icin state izin kontrolu atlandi."
+        return
+    fi
+
+    if sudo -u "$WEB_USER" test -r "$STATE_DIR" && sudo -u "$WEB_USER" test -w "$STATE_DIR"; then
+        pass "Web kullanicisi state klasorunu okuyup yazabiliyor: ${STATE_DIR}"
+    else
+        fail "Web kullanicisi state klasorune erisemiyor: ${STATE_DIR}"
+    fi
+
+    if sudo -u "$WEB_USER" test -r "$STATE_JOBS_DIR" && sudo -u "$WEB_USER" test -w "$STATE_JOBS_DIR"; then
+        pass "Web kullanicisi jobs klasorunu okuyup yazabiliyor: ${STATE_JOBS_DIR}"
+    else
+        fail "Web kullanicisi jobs klasorune erisemiyor: ${STATE_JOBS_DIR}"
+    fi
+}
+
 check_rclone_remote() {
     if rclone lsd "${RCLONE_REMOTE}:" >/dev/null 2>&1; then
         pass "rclone remote erisilebilir: ${RCLONE_REMOTE}"
@@ -247,6 +269,8 @@ check_rclone_remote() {
 check_python_syntax() {
     if python3 -m py_compile \
         "${APP_TARGET_DIR}/job_runner.py" \
+        "${APP_TARGET_DIR}/schedule_manager.py" \
+        "${APP_TARGET_DIR}/schedule_runner.py" \
         "${APP_TARGET_DIR}/services.py" \
         "${APP_TARGET_DIR}/views.py" \
         "${APP_TARGET_DIR}/urls.py" >/dev/null 2>&1; then
@@ -325,6 +349,8 @@ main() {
     check_file "$URLS_FILE" "urls.py"
     check_directory "$APP_TARGET_DIR" "serverBackupManager uygulama klasoru"
     check_file "${APP_TARGET_DIR}/job_runner.py" "job_runner.py"
+    check_file "${APP_TARGET_DIR}/schedule_manager.py" "schedule_manager.py"
+    check_file "${APP_TARGET_DIR}/schedule_runner.py" "schedule_runner.py"
     check_file "${APP_TARGET_DIR}/services.py" "services.py"
     check_file "${APP_TARGET_DIR}/views.py" "views.py"
     check_file "${APP_TARGET_DIR}/urls.py" "uygulama urls.py"
@@ -338,6 +364,7 @@ main() {
     check_sudoers
     check_runner_as_root
     check_runner_as_web_user
+    check_state_permissions
     check_rclone_remote
     check_python_syntax
     check_script_syntax
