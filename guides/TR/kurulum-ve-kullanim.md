@@ -27,9 +27,42 @@ Yayıncı: [Adem YÜCE](https://ademyuce.tr) - [ademyuce.tr](https://ademyuce.tr
 
 ## Kurulum
 
-1. Proje dosyalarını sunucuya alın.
+Bu bölüm, daha önce SSH ile sunucuya bağlanmamış biri düşünülerek yazıldı. Komutları tek tek çalıştırın. Bir satır bitmeden diğerine geçmeyin.
 
-Git ile:
+0. Sunucuya bağlanın.
+
+Önce bilgisayarınızdan sunucuya `root` olarak bağlanmanız gerekir. Elinizde sunucunun IP adresi ve root parolası olmalı.
+
+```bash
+ssh root@SUNUCU_IP_ADRESI
+```
+
+İlk bağlantıda bir onay sorusu gelirse `yes` yazıp Enter'a basın. Ardından root parolanızı girin. Yazarken ekranda karakter görünmemesi normaldir.
+
+1. Gerekli paketleri kurun.
+
+Sunucunuzun Linux sürümüne göre aşağıdaki komutlardan birini çalıştırın.
+
+Ubuntu / Debian için:
+
+```bash
+apt update
+apt install -y git wget unzip rclone openssl rsync
+```
+
+AlmaLinux / Rocky / CentOS için:
+
+```bash
+dnf install -y git wget unzip rclone openssl rsync
+```
+
+Bu adım, projeyi indirmek ve Google Drive bağlantısını kurmak için gereken temel araçları yükler.
+
+2. Proje dosyalarını sunucuya alın.
+
+İki yöntemden birini seçin. Genelde en kolay yol `git clone` kullanmaktır.
+
+Kolay yol, Git ile:
 
 ```bash
 mkdir -p /opt
@@ -37,7 +70,7 @@ git clone https://github.com/adeministratorr/cyberpanel-vault.git /opt/cyberpane
 cd /opt/cyberpanel-vault
 ```
 
-`wget` ile:
+Alternatif yol, `wget` ile:
 
 ```bash
 mkdir -p /opt
@@ -48,44 +81,92 @@ mv cyberpanel-vault-main cyberpanel-vault
 cd /opt/cyberpanel-vault
 ```
 
-Bu yöntem için sunucuda `unzip` paketinin kurulu olması gerekir.
+Bu adımın sonunda bulunduğunuz klasörün `/opt/cyberpanel-vault` olması gerekir.
 
-2. Betikleri sunucuya kopyalayın:
+3. Betikleri sistem klasörüne yerleştirin.
+
+Şimdi backup ve restore komutlarını sunucunun her yerinden çalıştırılabilir hale getiriyoruz:
 
 ```bash
 install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
 install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh
 ```
 
-3. Durum ve parola dizinlerini oluşturun:
+4. Gerekli klasörleri oluşturun.
+
+Bu klasörler yedek durumu, geçici dosyalar ve arayüz kayıtları için kullanılır:
 
 ```bash
 mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 ```
 
-4. Şifreleme dosyasını oluşturun:
+5. Şifreleme parolasını oluşturun.
+
+Bu parola çok önemlidir. Çünkü Google Drive'a giden yedek dosyaları bununla şifrelenir. Kısa ve tahmin edilebilir bir parola kullanmayın:
 
 ```bash
 printf '%s\n' 'GUCLU_UZUN_BIR_SIFRE' >/root/.config/cyberpanel-backup/encryption.pass
 chmod 600 /root/.config/cyberpanel-backup/encryption.pass
 ```
 
-5. `rclone` tarafında Google Drive bağlantısını hazırlayın. Betikler varsayılan olarak `gdrive` adlı remote'u kullanır.
+`GUCLU_UZUN_BIR_SIFRE` kısmını kendinize ait uzun bir parola ile değiştirin. Bu dosyayı kaybederseniz yedekleri açamazsınız.
 
-6. İlk yedeği elle başlatın:
+6. Google Drive bağlantısını kurun.
+
+Yedeklerin Google Drive'a gidebilmesi için `rclone` ayarı yapmanız gerekir:
+
+```bash
+rclone config
+```
+
+Ardından ekrandaki sorularda yeni bir remote oluşturun. Remote adını `gdrive` yazın. Depolama tipi olarak `drive` seçin. Google hesabınızla giriş yapıp yetki verin. İşlem bittiğinde bağlantıyı test edin:
+
+```bash
+rclone lsd gdrive:
+```
+
+Google Drive içindeki klasörleri görüyorsanız bağlantı hazır demektir.
+
+7. İlk tam yedeği başlatın.
+
+İlk çalıştırmada tam yedek almanız gerekir. Bu işlem sunucudaki veri miktarına göre uzun sürebilir:
 
 ```bash
 BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh
 ```
 
-7. Günlük çalışma için `auto` modunu zamanlayın:
+İşlem sırasında hata alırsanız günlük dosyasına bakın:
+
+```bash
+tail -f /var/log/cyberpanel_backup.log
+```
+
+8. Otomatik çalışmayı ayarlayın.
+
+Yedeklerin her gün otomatik alınmasını istiyorsanız root kullanıcısının cron tablosuna bir satır ekleyin:
+
+```bash
+crontab -e
+```
+
+Açılan dosyanın en altına şu satırı ekleyin:
 
 ```bash
 0 3 * * * BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh
 ```
 
-`auto` modunda betik haftada bir tam yedek alır; aradaki çalışmalarda artımlı yedek üretir.
+Kaydedip çıkın. Bundan sonra sistem her gece 03:00'te çalışır. `auto` modunda haftada bir tam yedek alınır, diğer günlerde artımlı yedek oluşturulur.
+
+9. Kurulumun doğru çalıştığını kontrol edin.
+
+Aşağıdaki üç şeyi kontrol edin:
+
+- `rclone lsd gdrive:` komutu hata vermemeli.
+- `ls -l /usr/local/bin/cyberpanel_full_backup.sh` çıktısında dosya görünmeli.
+- `tail -n 50 /var/log/cyberpanel_backup.log` içinde başarılı yükleme satırları görünmeli.
+
+Bu üç kontrol temizse kurulum büyük ölçüde tamamdır.
 
 ## Kullanım
 

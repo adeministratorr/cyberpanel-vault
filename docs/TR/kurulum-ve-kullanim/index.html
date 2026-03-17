@@ -55,17 +55,39 @@
       </ul>
 
       <h2>Kurulum</h2>
-      <h3>1. Proje dosyalarını sunucuya alın</h3>
-      <p>İsterseniz depoyu klonlayın, isterseniz arşiv olarak indirip açın.</p>
+      <p>Bu bölüm, daha önce SSH ile sunucuya bağlanmamış biri düşünülerek yazıldı. Komutları tek tek çalıştırın. Bir satır bitmeden diğerine geçmeyin.</p>
+
+      <h3>0. Sunucuya bağlanın</h3>
+      <p>Önce bilgisayarınızdan sunucuya <code>root</code> olarak bağlanmanız gerekir. Elinizde sunucunun IP adresi ve root parolası olmalı.</p>
+      <pre><code>ssh root@SUNUCU_IP_ADRESI</code></pre>
+      <p>İlk bağlantıda bir onay sorusu gelirse <code>yes</code> yazıp Enter'a basın. Ardından root parolanızı girin. Yazarken ekranda karakter görünmemesi normaldir.</p>
+
+      <h3>1. Gerekli paketleri kurun</h3>
+      <p>CyberPanel sunucunuzun hangi Linux sürümünü kullandığına göre aşağıdaki komutlardan birini çalıştırın.</p>
       <div class="grid">
         <section class="mini">
-          <h2>Git ile klonlama</h2>
+          <h2>Ubuntu / Debian</h2>
+          <pre><code>apt update
+apt install -y git wget unzip rclone openssl rsync</code></pre>
+        </section>
+        <section class="mini">
+          <h2>AlmaLinux / Rocky / CentOS</h2>
+          <pre><code>dnf install -y git wget unzip rclone openssl rsync</code></pre>
+        </section>
+      </div>
+      <p>Bu adım, projeyi indirmek ve Google Drive bağlantısını kurmak için gereken temel araçları yükler.</p>
+
+      <h3>2. Proje dosyalarını sunucuya alın</h3>
+      <p>İki yöntemden birini seçin. Genelde en kolay yol <code>git clone</code> kullanmaktır.</p>
+      <div class="grid">
+        <section class="mini">
+          <h2>Kolay yol: Git ile indirme</h2>
           <pre><code>mkdir -p /opt
 git clone https://github.com/adeministratorr/cyberpanel-vault.git /opt/cyberpanel-vault
 cd /opt/cyberpanel-vault</code></pre>
         </section>
         <section class="mini">
-          <h2>wget ile indirme</h2>
+          <h2>Alternatif yol: wget ile indirme</h2>
           <pre><code>mkdir -p /opt
 cd /opt
 wget -O cyberpanel-vault-main.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/heads/main.zip
@@ -74,29 +96,52 @@ mv cyberpanel-vault-main cyberpanel-vault
 cd /opt/cyberpanel-vault</code></pre>
         </section>
       </div>
-      <p><code>wget</code> yöntemi için sunucuda <code>unzip</code> paketinin kurulu olması gerekir.</p>
+      <p>Bu adımın sonunda bulunduğunuz klasörün <code>/opt/cyberpanel-vault</code> olması gerekir.</p>
 
-      <h3>2. Betikleri sistem yoluna kopyalayın</h3>
+      <h3>3. Betikleri sistem klasörüne yerleştirin</h3>
+      <p>Şimdi backup ve restore komutlarını sunucunun her yerinden çalıştırılabilir hale getiriyoruz.</p>
       <pre><code>install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
 install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh</code></pre>
 
-      <h3>3. Çalışma dizinlerini oluşturun</h3>
+      <h3>4. Gerekli klasörleri oluşturun</h3>
+      <p>Bu klasörler yedek durumu, geçici dosyalar ve arayüz kayıtları için kullanılır.</p>
       <pre><code>mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui</code></pre>
 
-      <h3>4. Şifreleme parolasını tanımlayın</h3>
+      <h3>5. Şifreleme parolasını oluşturun</h3>
+      <p>Bu parola çok önemlidir. Çünkü Google Drive'a giden yedek dosyaları bununla şifrelenir. Kısa ve tahmin edilebilir bir parola kullanmayın.</p>
       <pre><code>printf '%s\n' 'GUCLU_UZUN_BIR_SIFRE' >/root/.config/cyberpanel-backup/encryption.pass
 chmod 600 /root/.config/cyberpanel-backup/encryption.pass</code></pre>
+      <p><code>GUCLU_UZUN_BIR_SIFRE</code> kısmını kendinize ait uzun bir parola ile değiştirin. Bu dosyayı kaybederseniz yedekleri açamazsınız.</p>
 
-      <h3>5. Google Drive bağlantısını hazırlayın</h3>
-      <p><code>rclone</code> tarafında Google Drive bağlantısını oluşturun. Betikler varsayılan olarak <code>gdrive</code> adlı remote'u kullanır.</p>
+      <h3>6. Google Drive bağlantısını kurun</h3>
+      <p>Yedeklerin Google Drive'a gidebilmesi için <code>rclone</code> ayarı yapmanız gerekir. Aşağıdaki komutu çalıştırın:</p>
+      <pre><code>rclone config</code></pre>
+      <p>Ardından ekrandaki sorularda yeni bir remote oluşturun. Remote adını <code>gdrive</code> yazın. Depolama tipi olarak <code>drive</code> seçin. Google hesabınızla giriş yapıp yetki verin. İşlem bittiğinde bağlantıyı test edin:</p>
+      <pre><code>rclone lsd gdrive:</code></pre>
+      <p>Google Drive içindeki klasörleri görüyorsanız bağlantı hazır demektir.</p>
 
-      <h3>6. İlk tam yedeği başlatın</h3>
+      <h3>7. İlk tam yedeği başlatın</h3>
+      <p>İlk çalıştırmada tam yedek almanız gerekir. Bu işlem sunucudaki veri miktarına göre uzun sürebilir.</p>
       <pre><code>BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
+      <p>İşlem sırasında hata alırsanız günlük dosyasına bakın:</p>
+      <pre><code>tail -f /var/log/cyberpanel_backup.log</code></pre>
 
-      <h3>7. Düzenli çalışmayı zamanlayın</h3>
+      <h3>8. Otomatik çalışmayı ayarlayın</h3>
+      <p>Yedeklerin her gün otomatik alınmasını istiyorsanız root kullanıcısının cron tablosuna bir satır ekleyin.</p>
+      <pre><code>crontab -e</code></pre>
+      <p>Açılan dosyanın en altına şu satırı ekleyin:</p>
       <pre><code>0 3 * * * BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
-      <p><code>auto</code> modunda betik haftada bir tam yedek alır; aradaki günlerde artımlı yedek üretir.</p>
+      <p>Kaydedip çıkın. Bundan sonra sistem her gece 03:00'te çalışır. <code>auto</code> modunda haftada bir tam yedek alınır, diğer günlerde artımlı yedek oluşturulur.</p>
+
+      <h3>9. Kurulumun doğru çalıştığını kontrol edin</h3>
+      <p>Aşağıdaki üç şeyi kontrol edin:</p>
+      <ul>
+        <li><code>rclone lsd gdrive:</code> komutu hata vermemeli.</li>
+        <li><code>ls -l /usr/local/bin/cyberpanel_full_backup.sh</code> çıktısında dosya görünmeli.</li>
+        <li><code>tail -n 50 /var/log/cyberpanel_backup.log</code> içinde başarılı yükleme satırları görünmeli.</li>
+      </ul>
+      <p>Bu üç kontrol temizse kurulum büyük ölçüde tamamdır.</p>
 
       <h2>Kullanım</h2>
       <p>Kullanabileceğiniz yedekleme modları:</p>
