@@ -40,6 +40,7 @@ SCHEDULE_MANAGER = BASE_DIR / "schedule_manager.py"
 DEFAULT_SCHEDULE_ENABLED = False
 DEFAULT_SCHEDULE_HOUR = 3
 DEFAULT_SCHEDULE_MINUTE = 0
+DEFAULT_SCHEDULE_MODE = "auto"
 WEEKDAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 WEEKDAY_LABELS = {
     "mon": "Pzt",
@@ -141,6 +142,13 @@ def _sanitize_schedule_weekdays(value: Any, default: list[str]) -> list[str]:
             seen.add(day)
 
     return weekdays or list(default)
+
+
+def _sanitize_schedule_mode(value: Any, default: str) -> str:
+    mode = str(value).strip().lower() if value is not None else default
+    if mode not in ALLOWED_BACKUP_MODES:
+        return default
+    return mode
 
 
 def _now_iso() -> str:
@@ -267,6 +275,10 @@ def _settings_defaults() -> dict[str, Any]:
             os.environ.get("CYBERPANEL_SERVER_BACKUP_SCHEDULE_MINUTE"),
             DEFAULT_SCHEDULE_MINUTE,
         ),
+        "backup_schedule_mode": _sanitize_schedule_mode(
+            os.environ.get("CYBERPANEL_SERVER_BACKUP_SCHEDULE_MODE"),
+            DEFAULT_SCHEDULE_MODE,
+        ),
         "backup_schedule_weekdays": _sanitize_schedule_weekdays(
             os.environ.get("CYBERPANEL_SERVER_BACKUP_SCHEDULE_WEEKDAYS"),
             WEEKDAY_ORDER,
@@ -303,6 +315,10 @@ def load_ui_settings() -> dict[str, Any]:
             payload.get("backup_schedule_minute"),
             settings["backup_schedule_minute"],
         )
+        settings["backup_schedule_mode"] = _sanitize_schedule_mode(
+            payload.get("backup_schedule_mode"),
+            settings["backup_schedule_mode"],
+        )
         settings["backup_schedule_weekdays"] = _sanitize_schedule_weekdays(
             payload.get("backup_schedule_weekdays"),
             settings["backup_schedule_weekdays"],
@@ -319,6 +335,7 @@ def save_ui_settings(settings: dict[str, Any]) -> dict[str, Any]:
         "backup_schedule_enabled",
         "backup_schedule_hour",
         "backup_schedule_minute",
+        "backup_schedule_mode",
         "backup_schedule_weekdays",
     } & set(settings.keys()):
         current.update(
@@ -326,6 +343,7 @@ def save_ui_settings(settings: dict[str, Any]) -> dict[str, Any]:
                 settings.get("backup_schedule_enabled", current["backup_schedule_enabled"]),
                 settings.get("backup_schedule_hour", current["backup_schedule_hour"]),
                 settings.get("backup_schedule_minute", current["backup_schedule_minute"]),
+                settings.get("backup_schedule_mode", current["backup_schedule_mode"]),
                 settings.get("backup_schedule_weekdays", current["backup_schedule_weekdays"]),
             )
         )
@@ -355,6 +373,7 @@ def validate_backup_schedule_settings(
     enabled: Any,
     hour: Any,
     minute: Any,
+    mode: Any,
     weekdays: Any,
 ) -> dict[str, Any]:
     explicit_weekdays: list[str] | None
@@ -368,15 +387,19 @@ def validate_backup_schedule_settings(
     schedule_enabled = _parse_bool(enabled, DEFAULT_SCHEDULE_ENABLED)
     schedule_hour = _sanitize_schedule_hour(hour, DEFAULT_SCHEDULE_HOUR)
     schedule_minute = _sanitize_schedule_minute(minute, DEFAULT_SCHEDULE_MINUTE)
+    schedule_mode = _sanitize_schedule_mode(mode, DEFAULT_SCHEDULE_MODE)
     schedule_weekdays = _sanitize_schedule_weekdays(weekdays, WEEKDAY_ORDER)
 
     raw_hour = str(hour).strip() if hour is not None else ""
     raw_minute = str(minute).strip() if minute is not None else ""
+    raw_mode = str(mode).strip().lower() if mode is not None else ""
 
     if raw_hour and _parse_int(raw_hour, -1) != schedule_hour:
         raise ServiceError("Zamanlama saati 0 ile 23 arasında olmalıdır.")
     if raw_minute and _parse_int(raw_minute, -1) != schedule_minute:
         raise ServiceError("Zamanlama dakikası 0 ile 59 arasında olmalıdır.")
+    if raw_mode and raw_mode != schedule_mode:
+        raise ServiceError("Zamanlama modu geçerli değil.")
     if explicit_weekdays is not None and any(day not in WEEKDAY_ORDER for day in explicit_weekdays):
         raise ServiceError("Zamanlama günlerinden biri geçerli değil.")
     if schedule_enabled and explicit_weekdays is not None and not explicit_weekdays:
@@ -386,6 +409,7 @@ def validate_backup_schedule_settings(
         "backup_schedule_enabled": schedule_enabled,
         "backup_schedule_hour": schedule_hour,
         "backup_schedule_minute": schedule_minute,
+        "backup_schedule_mode": schedule_mode,
         "backup_schedule_weekdays": schedule_weekdays,
     }
 
@@ -400,7 +424,13 @@ def summarize_backup_schedule(settings: dict[str, Any]) -> str:
     else:
         day_label = ", ".join(WEEKDAY_LABELS.get(day, day) for day in weekdays)
 
-    return f"{day_label} {settings['backup_schedule_hour']:02d}:{settings['backup_schedule_minute']:02d}"
+    mode_labels = {
+        "auto": "Otomatik",
+        "full": "Tam",
+        "incremental": "Artımlı",
+    }
+    mode_label = mode_labels.get(settings.get("backup_schedule_mode", DEFAULT_SCHEDULE_MODE), "Otomatik")
+    return f"{day_label} {settings['backup_schedule_hour']:02d}:{settings['backup_schedule_minute']:02d} | {mode_label}"
 
 
 def _has_active_jobs() -> bool:
@@ -599,9 +629,9 @@ def start_backup_job(mode: str, timeout_minutes: Any = None) -> dict[str, Any]:
     )
 
 
-def update_backup_schedule(enabled: Any, hour: Any, minute: Any, weekdays: Any) -> dict[str, Any]:
+def update_backup_schedule(enabled: Any, hour: Any, minute: Any, mode: Any, weekdays: Any) -> dict[str, Any]:
     current_settings = load_ui_settings()
-    validated_schedule = validate_backup_schedule_settings(enabled, hour, minute, weekdays)
+    validated_schedule = validate_backup_schedule_settings(enabled, hour, minute, mode, weekdays)
     candidate_settings = {
         **current_settings,
         **validated_schedule,

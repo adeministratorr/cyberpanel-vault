@@ -60,6 +60,7 @@ def save_schedule(request: HttpRequest) -> HttpResponse:
     schedule_enabled = request.POST.get("schedule_enabled") == "on"
     schedule_hour = request.POST.get("schedule_hour", "").strip()
     schedule_minute = request.POST.get("schedule_minute", "").strip()
+    schedule_mode = request.POST.get("schedule_mode", "auto").strip()
     schedule_weekdays = request.POST.getlist("schedule_weekdays")
 
     try:
@@ -67,6 +68,7 @@ def save_schedule(request: HttpRequest) -> HttpResponse:
             enabled=schedule_enabled,
             hour=schedule_hour,
             minute=schedule_minute,
+            mode=schedule_mode,
             weekdays=schedule_weekdays,
         )
         messages.success(

@@ -471,6 +471,14 @@
                             >
                         </div>
                     </div>
+                    <div>
+                        <label for="schedule_mode">Çalıştırılacak yedek tipi</label>
+                        <select id="schedule_mode" name="schedule_mode">
+                            <option value="auto" {% if backup_settings.backup_schedule_mode == "auto" %}selected{% endif %}>Otomatik</option>
+                            <option value="full" {% if backup_settings.backup_schedule_mode == "full" %}selected{% endif %}>Tam</option>
+                            <option value="incremental" {% if backup_settings.backup_schedule_mode == "incremental" %}selected{% endif %}>Artımlı</option>
+                        </select>
+                    </div>
                     <div class="checklist">
                         <label class="check"><input type="checkbox" name="schedule_weekdays" value="mon" {% if "mon" in backup_settings.backup_schedule_weekdays %}checked{% endif %}> Pazartesi</label>
                         <label class="check"><input type="checkbox" name="schedule_weekdays" value="tue" {% if "tue" in backup_settings.backup_schedule_weekdays %}checked{% endif %}> Salı</label>
@@ -480,7 +488,7 @@
                         <label class="check"><input type="checkbox" name="schedule_weekdays" value="sat" {% if "sat" in backup_settings.backup_schedule_weekdays %}checked{% endif %}> Cumartesi</label>
                         <label class="check"><input type="checkbox" name="schedule_weekdays" value="sun" {% if "sun" in backup_settings.backup_schedule_weekdays %}checked{% endif %}> Pazar</label>
                     </div>
-                    <div class="meta">Sunucunun yerel saat dilimi esas alınır. Varsayılan çalışma modu otomatik zincir mantığıdır.</div>
+                    <div class="meta">Sunucunun yerel saat dilimi esas alınır. Seçtiğiniz mod cron zamanlamasında aynen uygulanır.</div>
                     <button class="secondary" type="submit">Zamanlamayı Kaydet</button>
                 </form>
 

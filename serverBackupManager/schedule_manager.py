@@ -56,6 +56,7 @@ def load_candidate_settings(config_path: Path) -> dict:
         payload.get("backup_schedule_enabled"),
         payload.get("backup_schedule_hour"),
         payload.get("backup_schedule_minute"),
+        payload.get("backup_schedule_mode"),
         payload.get("backup_schedule_weekdays"),
     )
 
@@ -81,10 +82,11 @@ def render_cron(settings: dict) -> str:
     dow = cron_weekday_expression(settings["backup_schedule_weekdays"])
     hour = settings["backup_schedule_hour"]
     minute = settings["backup_schedule_minute"]
+    mode = shlex.quote(settings["backup_schedule_mode"])
     python_bin = shlex.quote("python3")
     schedule_runner = shlex.quote(str(SCHEDULE_RUNNER))
     command = (
-        f"{python_bin} {schedule_runner} --mode auto "
+        f"{python_bin} {schedule_runner} --mode {mode} "
         ">>/var/log/cyberpanel_backup.log 2>&1"
     )
 
