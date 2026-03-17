@@ -11,8 +11,18 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://adeministratorr.github.io/cyberpanel-vault/TR/kurulum-ve-kullanim/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://adeministratorr.github.io/cyberpanel-vault/EN/</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://adeministratorr.github.io/cyberpanel-vault/EN/installation-and-usage/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
   </url>
 </urlset>

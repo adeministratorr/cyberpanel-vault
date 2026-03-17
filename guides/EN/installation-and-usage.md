@@ -1,6 +1,6 @@
 # CyberPanel Vault Installation and Usage
 
-This document explains how to install and operate `CyberPanel Vault` on a CyberPanel host.
+This guide explains how to install and operate `CyberPanel Vault` on a CyberPanel host.
 
 Publisher: [Adem YÜCE](https://ademyuce.tr) - [ademyuce.tr](https://ademyuce.tr)
 
@@ -27,36 +27,59 @@ Publisher: [Adem YÜCE](https://ademyuce.tr) - [ademyuce.tr](https://ademyuce.tr
 
 ## Installation
 
-1. Copy the scripts to the server:
+1. Fetch the project files.
+
+Clone with Git:
+
+```bash
+mkdir -p /opt
+git clone https://github.com/adeministratorr/cyberpanel-vault.git /opt/cyberpanel-vault
+cd /opt/cyberpanel-vault
+```
+
+Download with `wget`:
+
+```bash
+mkdir -p /opt
+cd /opt
+wget -O cyberpanel-vault-main.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/heads/main.zip
+unzip -o cyberpanel-vault-main.zip
+mv cyberpanel-vault-main cyberpanel-vault
+cd /opt/cyberpanel-vault
+```
+
+This method requires the `unzip` package on the server.
+
+2. Copy the scripts to the server:
 
 ```bash
 install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
 install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh
 ```
 
-2. Create the runtime and secret directories:
+3. Create the runtime and secret directories:
 
 ```bash
 mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 ```
 
-3. Create the encryption password file:
+4. Create the encryption password file:
 
 ```bash
 printf '%s\n' 'REPLACE_WITH_A_LONG_RANDOM_SECRET' >/root/.config/cyberpanel-backup/encryption.pass
 chmod 600 /root/.config/cyberpanel-backup/encryption.pass
 ```
 
-4. Configure `rclone` for Google Drive. The default remote name expected by the scripts is `gdrive`.
+5. Configure `rclone` for Google Drive. The default remote name expected by the scripts is `gdrive`.
 
-5. Run the first full backup:
+6. Run the first full backup:
 
 ```bash
 BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh
 ```
 
-6. Schedule regular runs in `auto` mode:
+7. Schedule regular runs in `auto` mode:
 
 ```bash
 0 3 * * * BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh

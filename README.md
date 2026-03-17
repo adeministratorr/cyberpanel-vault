@@ -38,9 +38,11 @@ CyberPanel Vault fills that gap.
 
 ## Documentation
 
-- GitHub Pages landing page: [`docs/index.html`](/Users/ademyuce/Documents/CyberPanel/docs/index.html)
-- Turkish installation and usage guide: [`docs/TR/kurulum-ve-kullanim.md`](/Users/ademyuce/Documents/CyberPanel/docs/TR/kurulum-ve-kullanim.md)
-- English installation and usage guide: [`docs/EN/installation-and-usage.md`](/Users/ademyuce/Documents/CyberPanel/docs/EN/installation-and-usage.md)
+- GitHub Pages landing page: [adeministratorr.github.io/cyberpanel-vault](https://adeministratorr.github.io/cyberpanel-vault/)
+- Turkish installation and usage page: [adeministratorr.github.io/cyberpanel-vault/TR/kurulum-ve-kullanim/](https://adeministratorr.github.io/cyberpanel-vault/TR/kurulum-ve-kullanim/)
+- English installation and usage page: [adeministratorr.github.io/cyberpanel-vault/EN/installation-and-usage/](https://adeministratorr.github.io/cyberpanel-vault/EN/installation-and-usage/)
+- Turkish markdown source: [`guides/TR/kurulum-ve-kullanim.md`](/Users/ademyuce/Documents/CyberPanel/guides/TR/kurulum-ve-kullanim.md)
+- English markdown source: [`guides/EN/installation-and-usage.md`](/Users/ademyuce/Documents/CyberPanel/guides/EN/installation-and-usage.md)
 
 ## Requirements
 
@@ -52,36 +54,59 @@ CyberPanel Vault fills that gap.
 
 ## Installation
 
-1. Copy the shell scripts to your server:
+1. Fetch the project files on your server.
+
+Clone with Git:
+
+```bash
+mkdir -p /opt
+git clone https://github.com/adeministratorr/cyberpanel-vault.git /opt/cyberpanel-vault
+cd /opt/cyberpanel-vault
+```
+
+Download with `wget`:
+
+```bash
+mkdir -p /opt
+cd /opt
+wget -O cyberpanel-vault-main.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/heads/main.zip
+unzip -o cyberpanel-vault-main.zip
+mv cyberpanel-vault-main cyberpanel-vault
+cd /opt/cyberpanel-vault
+```
+
+The `wget` path requires the `unzip` package on the server.
+
+2. Copy the shell scripts to your server:
 
 ```bash
 install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
 install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh
 ```
 
-2. Create the required runtime directories:
+3. Create the required runtime directories:
 
 ```bash
 mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 ```
 
-3. Create the encryption password file:
+4. Create the encryption password file:
 
 ```bash
 printf '%s\n' 'CHANGE_THIS_TO_A_LONG_RANDOM_SECRET' >/root/.config/cyberpanel-backup/encryption.pass
 chmod 600 /root/.config/cyberpanel-backup/encryption.pass
 ```
 
-4. Configure `rclone` so the backup host can write to your Google Drive remote. The default remote name is `gdrive`.
+5. Configure `rclone` so the backup host can write to your Google Drive remote. The default remote name is `gdrive`.
 
-5. Run the first backup manually:
+6. Run the first backup manually:
 
 ```bash
 BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh
 ```
 
-6. Schedule regular runs with `BACKUP_MODE=auto`. In `auto` mode the script takes a weekly full backup and incremental backups between full runs.
+7. Schedule regular runs with `BACKUP_MODE=auto`. In `auto` mode the script takes a weekly full backup and incremental backups between full runs.
 
 Example cron:
 

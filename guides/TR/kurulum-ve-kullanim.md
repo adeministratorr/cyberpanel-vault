@@ -27,36 +27,59 @@ Yayıncı: [Adem YÜCE](https://ademyuce.tr) - [ademyuce.tr](https://ademyuce.tr
 
 ## Kurulum
 
-1. Betikleri sunucuya kopyalayın:
+1. Proje dosyalarını sunucuya alın.
+
+Git ile:
+
+```bash
+mkdir -p /opt
+git clone https://github.com/adeministratorr/cyberpanel-vault.git /opt/cyberpanel-vault
+cd /opt/cyberpanel-vault
+```
+
+`wget` ile:
+
+```bash
+mkdir -p /opt
+cd /opt
+wget -O cyberpanel-vault-main.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/heads/main.zip
+unzip -o cyberpanel-vault-main.zip
+mv cyberpanel-vault-main cyberpanel-vault
+cd /opt/cyberpanel-vault
+```
+
+Bu yöntem için sunucuda `unzip` paketinin kurulu olması gerekir.
+
+2. Betikleri sunucuya kopyalayın:
 
 ```bash
 install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
 install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh
 ```
 
-2. Durum ve parola dizinlerini oluşturun:
+3. Durum ve parola dizinlerini oluşturun:
 
 ```bash
 mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
 ```
 
-3. Şifreleme dosyasını oluşturun:
+4. Şifreleme dosyasını oluşturun:
 
 ```bash
 printf '%s\n' 'GUCLU_UZUN_BIR_SIFRE' >/root/.config/cyberpanel-backup/encryption.pass
 chmod 600 /root/.config/cyberpanel-backup/encryption.pass
 ```
 
-4. `rclone` tarafında Google Drive bağlantısını hazırlayın. Betikler varsayılan olarak `gdrive` adlı remote'u kullanır.
+5. `rclone` tarafında Google Drive bağlantısını hazırlayın. Betikler varsayılan olarak `gdrive` adlı remote'u kullanır.
 
-5. İlk yedeği elle başlatın:
+6. İlk yedeği elle başlatın:
 
 ```bash
 BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh
 ```
 
-6. Günlük çalışma için `auto` modunu zamanlayın:
+7. Günlük çalışma için `auto` modunu zamanlayın:
 
 ```bash
 0 3 * * * BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh

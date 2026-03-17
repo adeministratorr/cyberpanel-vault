@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CyberPanel Vault | Installation and Usage</title>
+  <meta name="description" content="Detailed installation, download, first backup, restore, and CyberPanel integration guide for CyberPanel Vault.">
+  <meta name="robots" content="index, follow">
+  <meta name="geo.region" content="TR">
+  <meta name="geo.placename" content="Turkey">
+  <link rel="canonical" href="https://adeministratorr.github.io/cyberpanel-vault/EN/installation-and-usage/">
+  <link rel="icon" href="../../assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../../assets/cyberpanel-pages.css?v=3">
+</head>
+<body class="guide-page">
+  <div class="shell">
+    <nav class="nav">
+      <strong>CyberPanel Vault</strong>
+      <div>
+        <a href="../">EN Overview</a>
+        <a href="../../TR/kurulum-ve-kullanim/">Türkçe</a>
+        <a href="https://github.com/adeministratorr/cyberpanel-vault">GitHub</a>
+        <a href="https://ademyuce.tr">ademyuce.tr</a>
+      </div>
+    </nav>
+
+    <article class="card">
+      <span class="eyebrow">English Detailed Guide</span>
+      <h1>Installation, first backup, and restore workflow</h1>
+      <p>This page walks through the full CyberPanel Vault setup, from downloading the project to running the first backup, scheduling regular runs, and validating restores. Publisher: <a href="https://ademyuce.tr">Adem YÜCE</a> - <a href="https://ademyuce.tr">ademyuce.tr</a>.</p>
+
+      <div class="actions">
+        <a class="button primary" href="https://github.com/adeministratorr/cyberpanel-vault">Open GitHub repository</a>
+        <a class="button secondary" href="../">Back to EN overview</a>
+      </div>
+
+      <h2>What it provides</h2>
+      <ul>
+        <li>Weekly full backups</li>
+        <li>Incremental file and configuration backups between full runs</li>
+        <li>A full database dump on every run</li>
+        <li><code>openssl</code> encrypted archives</li>
+        <li>Google Drive uploads through <code>rclone</code></li>
+        <li>A chain-aware restore flow</li>
+        <li>A Django app skeleton that can be mounted into CyberPanel</li>
+      </ul>
+
+      <h2>Requirements</h2>
+      <ul>
+        <li>Linux server with <code>root</code> access</li>
+        <li><code>rclone</code>, <code>mysql</code>, <code>mysqldump</code>, <code>openssl</code>, <code>tar</code>, <code>gzip</code>, <code>sha256sum</code>, <code>flock</code>, and <code>rsync</code></li>
+        <li><code>/etc/cyberpanel/mysqlPassword</code></li>
+        <li>A working Google Drive <code>rclone</code> remote</li>
+        <li>A secure encryption password file</li>
+      </ul>
+
+      <h2>Installation</h2>
+      <h3>1. Fetch the project files</h3>
+      <p>You can either clone the repository or download the archive with <code>wget</code>.</p>
+      <div class="grid">
+        <section class="mini">
+          <h2>Clone with Git</h2>
+          <pre><code>mkdir -p /opt
+git clone https://github.com/adeministratorr/cyberpanel-vault.git /opt/cyberpanel-vault
+cd /opt/cyberpanel-vault</code></pre>
+        </section>
+        <section class="mini">
+          <h2>Download with wget</h2>
+          <pre><code>mkdir -p /opt
+cd /opt
+wget -O cyberpanel-vault-main.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/heads/main.zip
+unzip -o cyberpanel-vault-main.zip
+mv cyberpanel-vault-main cyberpanel-vault
+cd /opt/cyberpanel-vault</code></pre>
+        </section>
+      </div>
+      <p>The <code>wget</code> path requires the <code>unzip</code> package on the server.</p>
+
+      <h3>2. Install the scripts into the system path</h3>
+      <pre><code>install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
+install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh</code></pre>
+
+      <h3>3. Create runtime directories</h3>
+      <pre><code>mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
+chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui</code></pre>
+
+      <h3>4. Create the encryption password file</h3>
+      <pre><code>printf '%s\n' 'REPLACE_WITH_A_LONG_RANDOM_SECRET' >/root/.config/cyberpanel-backup/encryption.pass
+chmod 600 /root/.config/cyberpanel-backup/encryption.pass</code></pre>
+
+      <h3>5. Configure the Google Drive remote</h3>
+      <p>Set up <code>rclone</code> for Google Drive. The scripts expect the remote name <code>gdrive</code> by default.</p>
+
+      <h3>6. Run the first full backup</h3>
+      <pre><code>BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
+
+      <h3>7. Schedule regular runs</h3>
+      <pre><code>0 3 * * * BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
+      <p>In <code>auto</code> mode, the script creates a weekly full backup and incremental runs between full snapshots.</p>
+
+      <h2>Usage</h2>
+      <p>Available backup modes:</p>
+      <ul>
+        <li><code>BACKUP_MODE=auto</code></li>
+        <li><code>BACKUP_MODE=full</code></li>
+        <li><code>BACKUP_MODE=incremental</code></li>
+      </ul>
+      <pre><code>BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh
+BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh
+BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
+
+      <p>Common environment variables:</p>
+      <ul>
+        <li><code>RCLONE_REMOTE</code>, default <code>gdrive</code></li>
+        <li><code>DRIVE_FOLDER</code>, default <code>cyberpanel-backups</code></li>
+        <li><code>BACKUP_DIR</code>, default <code>/root/backups</code></li>
+        <li><code>STATE_DIR</code>, default <code>/var/lib/cyberpanel-backup</code></li>
+        <li><code>LOG_FILE</code>, default <code>/var/log/cyberpanel_backup.log</code></li>
+        <li><code>ENCRYPTION_PASSWORD_FILE</code>, default <code>/root/.config/cyberpanel-backup/encryption.pass</code></li>
+      </ul>
+
+      <h2>Restore</h2>
+      <p>Validate the selected chain before touching the live system:</p>
+      <pre><code>/usr/local/bin/cyberpanel_restore.sh --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc</code></pre>
+
+      <p>Run a real restore:</p>
+      <pre><code>/usr/local/bin/cyberpanel_restore.sh \
+  --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc \
+  --confirm-host "$(hostname -f)" \
+  --apply</code></pre>
+
+      <p>Optional flags:</p>
+      <ul>
+        <li><code>--skip-db</code></li>
+        <li><code>--skip-files</code></li>
+        <li><code>--skip-configs</code></li>
+        <li><code>--skip-services</code></li>
+        <li><code>--keep-workdir</code></li>
+      </ul>
+
+      <h2>CyberPanel integration</h2>
+      <p>The <code>serverBackupManager/</code> directory is a Django app skeleton that can be mounted into CyberPanel.</p>
+      <p>Minimum integration steps:</p>
+      <ol>
+        <li>Add the directory to the CyberPanel Django codebase.</li>
+        <li>Mount the routes from <code>urls.py</code>.</li>
+        <li>Set the required environment variables.</li>
+      </ol>
+      <pre><code>export CYBERPANEL_SERVER_BACKUP_SCRIPT=/usr/local/bin/cyberpanel_full_backup.sh
+export CYBERPANEL_SERVER_RESTORE_SCRIPT=/usr/local/bin/cyberpanel_restore.sh
+export CYBERPANEL_SERVER_BACKUP_UI_STATE_DIR=/var/lib/cyberpanel-backup-ui</code></pre>
+      <p>Make sure the web process can spawn background jobs and that <code>rclone</code> is available on the host.</p>
+
+      <h2>Operational notes</h2>
+      <ul>
+        <li>The scripts must run as <code>root</code>.</li>
+        <li>The restore flow verifies the current host FQDN before applying changes.</li>
+        <li>The UI only lists backup chains that match the current host slug.</li>
+        <li>Test a full restore on staging before using the workflow in production.</li>
+      </ul>
+    </article>
+
+    <footer class="footer">
+      <span>Source repository: <a href="https://github.com/adeministratorr/cyberpanel-vault">github.com/adeministratorr/cyberpanel-vault</a></span>
+      <a class="button" href="../../TR/kurulum-ve-kullanim/">Türkçe sürüm</a>
+    </footer>
+  </div>
+</body>
+</html>

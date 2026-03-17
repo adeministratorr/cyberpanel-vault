@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CyberPanel Vault | Kurulum ve Kullanım</title>
+  <meta name="description" content="CyberPanel Vault için ayrıntılı kurulum, indirme, ilk yedek, geri yükleme ve CyberPanel entegrasyonu rehberi.">
+  <meta name="robots" content="index, follow">
+  <meta name="geo.region" content="TR">
+  <meta name="geo.placename" content="Turkey">
+  <link rel="canonical" href="https://adeministratorr.github.io/cyberpanel-vault/TR/kurulum-ve-kullanim/">
+  <link rel="icon" href="../../assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../../assets/cyberpanel-pages.css?v=3">
+</head>
+<body class="guide-page">
+  <div class="shell">
+    <nav class="nav">
+      <strong>CyberPanel Vault</strong>
+      <div>
+        <a href="../">TR Genel Bakış</a>
+        <a href="../../EN/installation-and-usage/">English</a>
+        <a href="https://github.com/adeministratorr/cyberpanel-vault">GitHub</a>
+        <a href="https://ademyuce.tr">ademyuce.tr</a>
+      </div>
+    </nav>
+
+    <article class="card">
+      <span class="eyebrow">Türkçe Ayrıntılı Rehber</span>
+      <h1>Kurulum, ilk yedek ve geri yükleme akışı</h1>
+      <p>Bu sayfa, <strong>CyberPanel Vault</strong>'u sunucuya indirmekten ilk tam yedeği almaya, düzenli çalıştırmadan geri yükleme akışına kadar tüm temel adımları bir araya getirir. Yayıncı: <a href="https://ademyuce.tr">Adem YÜCE</a> - <a href="https://ademyuce.tr">ademyuce.tr</a>.</p>
+
+      <div class="actions">
+        <a class="button primary" href="https://github.com/adeministratorr/cyberpanel-vault">GitHub deposunu aç</a>
+        <a class="button secondary" href="../">TR özet sayfasına dön</a>
+      </div>
+
+      <h2>Neler sunar</h2>
+      <ul>
+        <li>Haftada bir tam yedek</li>
+        <li>Tam yedekler arasında artımlı dosya ve yapılandırma yedeği</li>
+        <li>Her çalışmada tam veritabanı dökümü</li>
+        <li><code>openssl</code> ile şifrelenmiş arşiv</li>
+        <li><code>rclone</code> ile Google Drive aktarımı</li>
+        <li>Zincir mantığıyla çalışan geri yükleme akışı</li>
+        <li>CyberPanel arayüzüne bağlanabilecek Django uygulama iskeleti</li>
+      </ul>
+
+      <h2>Gereksinimler</h2>
+      <ul>
+        <li><code>root</code> erişimine sahip bir Linux sunucu</li>
+        <li><code>rclone</code>, <code>mysql</code>, <code>mysqldump</code>, <code>openssl</code>, <code>tar</code>, <code>gzip</code>, <code>sha256sum</code>, <code>flock</code> ve <code>rsync</code></li>
+        <li><code>/etc/cyberpanel/mysqlPassword</code> dosyası</li>
+        <li>Google Drive için hazır bir <code>rclone</code> remote'u</li>
+        <li>Şifreleme parolası için güvenli bir dosya</li>
+      </ul>
+
+      <h2>Kurulum</h2>
+      <h3>1. Proje dosyalarını sunucuya alın</h3>
+      <p>İsterseniz depoyu klonlayın, isterseniz arşiv olarak indirip açın.</p>
+      <div class="grid">
+        <section class="mini">
+          <h2>Git ile klonlama</h2>
+          <pre><code>mkdir -p /opt
+git clone https://github.com/adeministratorr/cyberpanel-vault.git /opt/cyberpanel-vault
+cd /opt/cyberpanel-vault</code></pre>
+        </section>
+        <section class="mini">
+          <h2>wget ile indirme</h2>
+          <pre><code>mkdir -p /opt
+cd /opt
+wget -O cyberpanel-vault-main.zip https://github.com/adeministratorr/cyberpanel-vault/archive/refs/heads/main.zip
+unzip -o cyberpanel-vault-main.zip
+mv cyberpanel-vault-main cyberpanel-vault
+cd /opt/cyberpanel-vault</code></pre>
+        </section>
+      </div>
+      <p><code>wget</code> yöntemi için sunucuda <code>unzip</code> paketinin kurulu olması gerekir.</p>
+
+      <h3>2. Betikleri sistem yoluna kopyalayın</h3>
+      <pre><code>install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
+install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh</code></pre>
+
+      <h3>3. Çalışma dizinlerini oluşturun</h3>
+      <pre><code>mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui
+chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup /var/lib/cyberpanel-backup-ui</code></pre>
+
+      <h3>4. Şifreleme parolasını tanımlayın</h3>
+      <pre><code>printf '%s\n' 'GUCLU_UZUN_BIR_SIFRE' >/root/.config/cyberpanel-backup/encryption.pass
+chmod 600 /root/.config/cyberpanel-backup/encryption.pass</code></pre>
+
+      <h3>5. Google Drive bağlantısını hazırlayın</h3>
+      <p><code>rclone</code> tarafında Google Drive bağlantısını oluşturun. Betikler varsayılan olarak <code>gdrive</code> adlı remote'u kullanır.</p>
+
+      <h3>6. İlk tam yedeği başlatın</h3>
+      <pre><code>BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
+
+      <h3>7. Düzenli çalışmayı zamanlayın</h3>
+      <pre><code>0 3 * * * BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
+      <p><code>auto</code> modunda betik haftada bir tam yedek alır; aradaki günlerde artımlı yedek üretir.</p>
+
+      <h2>Kullanım</h2>
+      <p>Kullanabileceğiniz yedekleme modları:</p>
+      <ul>
+        <li><code>BACKUP_MODE=auto</code></li>
+        <li><code>BACKUP_MODE=full</code></li>
+        <li><code>BACKUP_MODE=incremental</code></li>
+      </ul>
+      <pre><code>BACKUP_MODE=auto /usr/local/bin/cyberpanel_full_backup.sh
+BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh
+BACKUP_MODE=incremental /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
+
+      <p>Sık kullanılan ortam değişkenleri:</p>
+      <ul>
+        <li><code>RCLONE_REMOTE</code>, varsayılan <code>gdrive</code></li>
+        <li><code>DRIVE_FOLDER</code>, varsayılan <code>cyberpanel-backups</code></li>
+        <li><code>BACKUP_DIR</code>, varsayılan <code>/root/backups</code></li>
+        <li><code>STATE_DIR</code>, varsayılan <code>/var/lib/cyberpanel-backup</code></li>
+        <li><code>LOG_FILE</code>, varsayılan <code>/var/log/cyberpanel_backup.log</code></li>
+        <li><code>ENCRYPTION_PASSWORD_FILE</code>, varsayılan <code>/root/.config/cyberpanel-backup/encryption.pass</code></li>
+      </ul>
+
+      <h2>Geri yükleme</h2>
+      <p>Canlı sistemi değiştirmeden önce seçtiğiniz zinciri doğrulayın:</p>
+      <pre><code>/usr/local/bin/cyberpanel_restore.sh --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc</code></pre>
+
+      <p>Gerçek geri yükleme için:</p>
+      <pre><code>/usr/local/bin/cyberpanel_restore.sh \
+  --target-file backup__host-example.com__chain-20260317T030000__type-incremental__at-20260318T030000.tar.gz.enc \
+  --confirm-host "$(hostname -f)" \
+  --apply</code></pre>
+
+      <p>Gerektiğinde şu seçeneklerle kısmi geri yükleme yapabilirsiniz:</p>
+      <ul>
+        <li><code>--skip-db</code></li>
+        <li><code>--skip-files</code></li>
+        <li><code>--skip-configs</code></li>
+        <li><code>--skip-services</code></li>
+        <li><code>--keep-workdir</code></li>
+      </ul>
+
+      <h2>CyberPanel arayüzüne bağlama</h2>
+      <p><code>serverBackupManager/</code> dizini, CyberPanel içine eklenebilecek bir Django uygulama iskeletidir.</p>
+      <p>Temel bağlantı adımları:</p>
+      <ol>
+        <li>Dizini CyberPanel'in Django kod tabanına ekleyin.</li>
+        <li><code>urls.py</code> içindeki yolları panelin mevcut URL yapısına bağlayın.</li>
+        <li>Gerekli ortam değişkenlerini tanımlayın.</li>
+      </ol>
+      <pre><code>export CYBERPANEL_SERVER_BACKUP_SCRIPT=/usr/local/bin/cyberpanel_full_backup.sh
+export CYBERPANEL_SERVER_RESTORE_SCRIPT=/usr/local/bin/cyberpanel_restore.sh
+export CYBERPANEL_SERVER_BACKUP_UI_STATE_DIR=/var/lib/cyberpanel-backup-ui</code></pre>
+      <p>Web sürecinin arka planda iş başlatabildiğinden ve sunucuda <code>rclone</code> erişimi olduğundan emin olun.</p>
+
+      <h2>Operasyon notları</h2>
+      <ul>
+        <li>Betikler <code>root</code> olarak çalışmalıdır.</li>
+        <li>Geri yükleme sırasında mevcut sunucunun FQDN değeri doğrulanır.</li>
+        <li>Arayüz yalnızca o sunucuya ait yedek zincirlerini listeler.</li>
+        <li>Üretime almadan önce tam geri yükleme senaryosunu test ortamında deneyin.</li>
+      </ul>
+    </article>
+
+    <footer class="footer">
+      <span>Kaynak kod: <a href="https://github.com/adeministratorr/cyberpanel-vault">github.com/adeministratorr/cyberpanel-vault</a></span>
+      <a class="button" href="../../EN/installation-and-usage/">English version</a>
+    </footer>
+  </div>
+</body>
+</html>

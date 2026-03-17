@@ -10,7 +10,7 @@
   <meta name="geo.placename" content="Turkey">
   <link rel="canonical" href="https://adeministratorr.github.io/cyberpanel-vault/TR/">
   <link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="../assets/cyberpanel-pages.css?v=2">
+  <link rel="stylesheet" href="../assets/cyberpanel-pages.css?v=3">
 </head>
 <body class="guide-page">
   <div class="shell">
@@ -41,7 +41,9 @@
       <div class="grid">
         <section class="mini">
           <h2>Hızlı kurulum</h2>
-          <pre><code>install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
+          <pre><code>git clone https://github.com/adeministratorr/cyberpanel-vault.git /opt/cyberpanel-vault
+cd /opt/cyberpanel-vault
+install -m 750 cyberpanel_full_backup.sh /usr/local/bin/cyberpanel_full_backup.sh
 install -m 750 cyberpanel_restore.sh /usr/local/bin/cyberpanel_restore.sh
 mkdir -p /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup
 chmod 700 /root/.config/cyberpanel-backup /var/lib/cyberpanel-backup</code></pre>
@@ -71,7 +73,8 @@ BACKUP_MODE=full /usr/local/bin/cyberpanel_full_backup.sh</code></pre>
       </ul>
 
       <h2>CyberPanel entegrasyonu</h2>
-      <p><code>serverBackupManager/</code> dizini, CyberPanel'e eklenebilecek bir Django uygulama iskeletidir. İsterseniz bunu panel yapısına bağlayıp yedekleme ve geri yükleme işlemlerini doğrudan arayüzden yönetebilirsiniz. Ayrıntılı kılavuz için: <a href="kurulum-ve-kullanim.md">kurulum-ve-kullanim.md</a>.</p>
+      <p><code>serverBackupManager/</code> dizini, CyberPanel'e eklenebilecek bir Django uygulama iskeletidir. İsterseniz bunu panel yapısına bağlayıp yedekleme ve geri yükleme işlemlerini doğrudan arayüzden yönetebilirsiniz. Ayrıntılı kılavuz için: <a href="kurulum-ve-kullanim/">kurulum ve kullanım sayfası</a>.</p>
+      <p><a class="button" href="kurulum-ve-kullanim/">Ayrıntılı kurulum sayfasını aç</a></p>
     </article>
 
     <footer class="footer">
